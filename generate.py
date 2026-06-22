@@ -2,7 +2,7 @@ import logging
 
 import config
 from ai_client import call_for_json
-from persona import PERSONA
+from persona import ENGAGEMENT_GUIDELINES, PERSONA
 
 logger = logging.getLogger("marketpulse.generate")
 
@@ -12,17 +12,21 @@ SYSTEM_PROMPT = (
 
 Given one news story, write a short, ready-to-post X/Twitter thread of 3-5 tweets covering it. \
 The thread should:
-- Open with the core fact, framed for impact.
+- Open with a hook tied to the core fact — a specific number, a sharp contrast, or a direct \
+question — not a flat headline restatement.
 - Add one tweet of immediate market context — what it means for the relevant markets or sectors \
 right now.
 - Include at least one concrete number or data point from the story.
-- Close with a brief "What to watch next:" tweet naming the next relevant data point, event, or \
-catalyst.
+- Close with a "What to watch next:" line naming the next relevant data point, event, or catalyst, \
+followed directly by a question that invites the reader to reply with their own take.
+
+"""
+    + ENGAGEMENT_GUIDELINES
+    + """
 
 Number each tweet by prefixing its text with "N/TOTAL " (e.g. "1/4 ..."). Each tweet, including \
-the number prefix, must be under 280 characters. No hashtag spam (0-1 max per tweet), no emojis \
-unless they add real signal. Ground every claim in the specific facts of the story — no generic \
-filler.
+the number prefix, must be under 280 characters. Ground every claim in the specific facts of the \
+story — no generic filler.
 
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 {"thread": ["1/4 ...", "2/4 ...", ...], "relevance": 0-10, "expected_engagement": 0-10, \

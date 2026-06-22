@@ -2,11 +2,12 @@ name: MarketPulse AI
 
 on:
   schedule:
-    # UTC times — set for UK summer time (BST, UTC+1). During UK winter
-    # (GMT, UTC+0) these will fire an hour earlier in local time.
-    - cron: "0 6 * * *"   # 07:00 BST / 06:00 GMT
-    - cron: "0 12 * * *"  # 13:00 BST / 12:00 GMT
-    - cron: "0 18 * * *"  # 19:00 BST / 18:00 GMT
+    # UTC times, aligned to X engagement windows — set for UK summer time
+    # (BST, UTC+1). During UK winter (GMT, UTC+0) these will fire an hour
+    # earlier in local time.
+    - cron: "0 6 * * *"    # 07:00 BST / 06:00 GMT — pre-market recap
+    - cron: "30 13 * * *"  # 14:30 BST / 13:30 GMT — US market open
+    - cron: "0 20 * * *"   # 21:00 BST / 20:00 GMT — US market close
   workflow_dispatch: {}
 
 permissions:

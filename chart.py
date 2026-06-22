@@ -13,7 +13,6 @@ logger = logging.getLogger("marketpulse.chart")
 GREEN = "#16a34a"
 RED = "#dc2626"
 GRID_COLOR = "#e5e7eb"
-WATERMARK = "MarketPulse AI"
 
 
 def _fetch_history(ticker):
@@ -63,8 +62,6 @@ def generate_chart(ticker, label=None):
     ax.tick_params(axis="x", labelsize=8, colors="#666666")
     ax.tick_params(axis="y", labelsize=8, colors="#666666")
     fig.patch.set_facecolor("white")
-
-    fig.text(0.99, 0.02, WATERMARK, ha="right", va="bottom", fontsize=8, color="#aaaaaa")
 
     fig.tight_layout()
     buf = io.BytesIO()

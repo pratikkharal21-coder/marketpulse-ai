@@ -2,7 +2,8 @@ import logging
 
 import config
 from ai_client import call_for_json
-from persona import ENGAGEMENT_GUIDELINES, PERSONA
+from chart import generate_chart
+from persona import ENGAGEMENT_GUIDELINES, PERSONA, TICKER_REFERENCE, VALUE_GUIDELINES
 
 logger = logging.getLogger("marketpulse.longform")
 
@@ -30,7 +31,11 @@ catalysts to monitor, followed directly by a question asking readers which scena
 they find more likely, or what they're watching that wasn't covered.
 
 """
+    + VALUE_GUIDELINES
+    + "\n\n"
     + ENGAGEMENT_GUIDELINES
+    + "\n\n"
+    + TICKER_REFERENCE
     + """
 
 Number each tweet by prefixing its text with "N/TOTAL " (e.g. "1/9 ..."). Each tweet, including \
@@ -38,8 +43,8 @@ the number prefix, must be under 280 characters. Ground every claim in the speci
 story — no generic filler.
 
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
-{"thread": ["1/9 ...", "2/9 ...", ...], "relevance": 0-10, "expected_engagement": 0-10, \
-"market_significance": 0-10, "confidence": 0-10}"""
+{"thread": ["1/9 ...", "2/9 ...", ...], "ticker": "AAPL" or null, "relevance": 0-10, \
+"expected_engagement": 0-10, "market_significance": 0-10, "confidence": 0-10}"""
 )
 
 
@@ -63,8 +68,13 @@ def generate_longform(story):
     if not thread:
         return None
 
+    ticker = result.get("ticker") or None
+    chart_image = generate_chart(ticker, label=story["title"]) if ticker else None
+
     return {
         "thread": thread,
+        "ticker": ticker,
+        "chart_image": chart_image,
         "relevance": result.get("relevance", 0),
         "expected_engagement": result.get("expected_engagement", 0),
         "market_significance": result.get("market_significance", 0),

@@ -30,19 +30,19 @@ def run():
     survivors = triage.triage(new_items)
     if not survivors:
         logger.info("No stories survived triage. Sending empty-digest notice and exiting.")
-        report_html = report.render([], 0, [])
-        mailer.send(f"MarketPulse AI — no high-impact stories ({_now_str()})", report_html)
+        report_html, inline_images = report.render([], 0, [])
+        mailer.send(f"MarketPulse AI — no high-impact stories ({_now_str()})", report_html, inline_images)
         state.save(st)
         return
 
     threads = generate.generate_short_threads(survivors)
     deep_dives = longform.generate_top_longform(survivors)
 
-    report_html = report.render(threads, len(survivors), deep_dives)
+    report_html, inline_images = report.render(threads, len(survivors), deep_dives)
     subject = f"MarketPulse AI — {len(threads)} threads"
     if deep_dives:
         subject += f" + {len(deep_dives)} deep dive{'s' if len(deep_dives) != 1 else ''}"
-    mailer.send(f"{subject} ({_now_str()})", report_html)
+    mailer.send(f"{subject} ({_now_str()})", report_html, inline_images)
 
     st = state.mark_sent(st, survivors)
     state.save(st)

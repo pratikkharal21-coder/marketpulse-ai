@@ -26,3 +26,27 @@ ENGAGEMENT_GUIDELINES = (
     "- At most one emoji total per thread, only if it adds real signal (e.g. a direction arrow). "
     "No hashtags — they don't aid reach on X and read as dated."
 )
+
+VALUE_GUIDELINES = (
+    "Never write a tweet that is just a bare price-move recap with no analysis — e.g. 'USD/JPY up "
+    "0.25%' on its own is low-value filler that gets scrolled past. Every number you cite must be "
+    "paired with WHY it matters: the context behind it, how it compares to expectations or "
+    "history, or what it implies for traders and investors going forward. If a tweet states a "
+    "number, the same tweet (or the very next one) must explain its significance — never leave a "
+    "number to stand alone."
+)
+
+TICKER_REFERENCE = (
+    "If the story has one clearly relevant tradable instrument, identify its Yahoo Finance ticker "
+    "symbol so a price chart can be attached. Use these exact conventions:\n"
+    "- US stocks: plain ticker, e.g. AAPL, MSFT, TSLA\n"
+    "- Major indices: ^GSPC (S&P 500), ^DJI (Dow), ^IXIC (Nasdaq), ^FTSE, ^N225 (Nikkei)\n"
+    "- Forex pairs: EURUSD=X, USDJPY=X, GBPUSD=X, etc.\n"
+    "- Commodities futures: CL=F (WTI crude), BZ=F (Brent), GC=F (gold), SI=F (silver), NG=F "
+    "(natural gas)\n"
+    "- Crypto: BTC-USD, ETH-USD, etc.\n"
+    "- US 10-year Treasury yield: ^TNX\n"
+    "- US Dollar Index: DX-Y.NYB\n"
+    "If no single instrument is clearly central to the story (e.g. a broad macro or policy story "
+    "with no obvious ticker), set ticker to null rather than guessing."
+)

@@ -17,6 +17,9 @@ TEMPLATE = """
     <div style="font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">
       {{ item.story_source }} · {{ item.thread|length }} tweets
     </div>
+    {% if item.cid %}
+    <img src="cid:{{ item.cid }}" alt="{{ item.ticker }} chart" style="width: 100%; max-width: 560px; border-radius: 6px; margin: 10px 0;">
+    {% endif %}
     {% for tweet in item.thread %}
     <p style="font-size: 15px; line-height: 1.4; margin: 10px 0; padding-left: 10px; border-left: 3px solid {{ accent }};">
       {{ tweet }}
@@ -50,10 +53,28 @@ _env = Environment(loader=BaseLoader())
 _template = _env.from_string(TEMPLATE)
 
 
+def _assign_cids(items, prefix):
+    inline_images = {}
+    for i, item in enumerate(items):
+        chart_image = item.get("chart_image")
+        if chart_image:
+            cid = f"{prefix}{i}"
+            item["cid"] = cid
+            inline_images[cid] = chart_image
+        else:
+            item["cid"] = None
+    return inline_images
+
+
 def render(threads, story_count, deep_dives):
-    return _template.render(
+    inline_images = {}
+    inline_images.update(_assign_cids(threads, "thread"))
+    inline_images.update(_assign_cids(deep_dives, "deepdive"))
+
+    html = _template.render(
         run_time=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         story_count=story_count,
         threads=threads,
         deep_dives=deep_dives,
     )
+    return html, inline_images

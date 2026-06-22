@@ -11,10 +11,28 @@ FEEDS = {
         "https://finance.yahoo.com/news/rssindex",
         "https://feeds.content.dowjones.io/public/rss/mw_topstories",
         "https://www.investing.com/rss/news.rss",
+        "https://feeds.a.dj.com/rss/RSSMarketsMain.xml",
+        "https://feeds.bbci.co.uk/news/business/rss.xml",
+        "http://rss.cnn.com/rss/money_markets.rss",
+        "https://seekingalpha.com/market_currents.xml",
+        "https://www.benzinga.com/feed",
+        "https://feeds.feedburner.com/zerohedge/feed",
     ],
     "macro": [
         "https://www.cnbc.com/id/20910258/device/rss/rss.html",
         "https://www.fxstreet.com/rss/news",
+        "https://www.economist.com/finance-and-economics/rss.xml",
+        "https://www.federalreserve.gov/feeds/press_all.xml",
+        "https://www.ecb.europa.eu/rss/press.html",
+        "http://rss.cnn.com/rss/money_news_economy.rss",
+        "https://feeds.a.dj.com/rss/RSSWorldNews.xml",
+    ],
+    "fx": [
+        "https://www.investing.com/rss/forex.rss",
+    ],
+    "commodities": [
+        "https://oilprice.com/rss/main",
+        "https://www.investing.com/rss/commodities.rss",
     ],
     "crypto": [
         "https://www.coindesk.com/arc/outboundfeeds/rss/",

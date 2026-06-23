@@ -1,11 +1,10 @@
 name: MarketPulse AI
 
 on:
-  # Scheduling is handled by an external cron service (cron-job.org) that
-  # calls this workflow_dispatch trigger directly — it supports the
-  # Europe/London timezone natively (auto-handles BST/GMT) and fires with
-  # much tighter precision than GitHub's own `schedule:` trigger, which has
-  # no timing guarantee. See README for the cron-job.org setup.
+  # No `schedule:` trigger — GitHub's own cron is best-effort and can run
+  # 1-3 hours late. Timing is instead driven precisely by an external
+  # scheduler (cron-job.org, Europe/London timezone) calling the GitHub
+  # API to fire workflow_dispatch at the exact minute. See README.
   workflow_dispatch: {}
 
 permissions:

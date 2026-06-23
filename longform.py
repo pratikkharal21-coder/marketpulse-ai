@@ -60,29 +60,31 @@ def generate_longform(story):
 
     try:
         result = call_for_json(config.GENERATE_MODEL, SYSTEM_PROMPT, user_content, max_tokens=2048)
+        if not isinstance(result, dict):
+            raise ValueError(f"Expected a JSON object, got {type(result).__name__}")
+
+        thread = [t for t in result.get("thread", []) if t]
+        if not thread:
+            return None
+
+        ticker = result.get("ticker") or None
+        chart_image = generate_chart(ticker, label=story["title"]) if ticker else None
+
+        return {
+            "thread": thread,
+            "ticker": ticker,
+            "chart_image": chart_image,
+            "relevance": result.get("relevance", 0),
+            "expected_engagement": result.get("expected_engagement", 0),
+            "market_significance": result.get("market_significance", 0),
+            "confidence": result.get("confidence", 0),
+            "story_title": story["title"],
+            "story_link": story["link"],
+            "story_source": story["source"],
+        }
     except Exception as exc:
         logger.error("Long-form generation failed for story '%s': %s", story["title"], exc)
         return None
-
-    thread = [t for t in result.get("thread", []) if t]
-    if not thread:
-        return None
-
-    ticker = result.get("ticker") or None
-    chart_image = generate_chart(ticker, label=story["title"]) if ticker else None
-
-    return {
-        "thread": thread,
-        "ticker": ticker,
-        "chart_image": chart_image,
-        "relevance": result.get("relevance", 0),
-        "expected_engagement": result.get("expected_engagement", 0),
-        "market_significance": result.get("market_significance", 0),
-        "confidence": result.get("confidence", 0),
-        "story_title": story["title"],
-        "story_link": story["link"],
-        "story_source": story["source"],
-    }
 
 
 def generate_top_longform(stories):

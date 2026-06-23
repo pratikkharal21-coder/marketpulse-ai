@@ -18,7 +18,7 @@ TEMPLATE = """
       {{ item.story_source }} · {{ item.thread|length }} tweets
     </div>
     {% if item.cid %}
-    <img src="cid:{{ item.cid }}" alt="{{ item.ticker }} chart" style="width: 100%; max-width: 560px; border-radius: 6px; margin: 10px 0;">
+    <img src="cid:{{ item.cid }}" alt="chart" style="width: 100%; max-width: 560px; border-radius: 6px; margin: 10px 0;">
     {% endif %}
     {% for tweet in item.thread %}
     <p style="font-size: 15px; line-height: 1.4; margin: 10px 0; padding-left: 10px; border-left: 3px solid {{ accent }};">

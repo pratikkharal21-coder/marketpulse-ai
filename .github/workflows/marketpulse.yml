@@ -1,13 +1,11 @@
 name: MarketPulse AI
 
 on:
-  schedule:
-    # UTC times, aligned to X engagement windows — set for UK summer time
-    # (BST, UTC+1). During UK winter (GMT, UTC+0) these will fire an hour
-    # earlier in local time.
-    - cron: "0 6 * * *"    # 07:00 BST / 06:00 GMT — pre-market recap
-    - cron: "30 13 * * *"  # 14:30 BST / 13:30 GMT — US market open
-    - cron: "0 20 * * *"   # 21:00 BST / 20:00 GMT — US market close
+  # Scheduling is handled by an external cron service (cron-job.org) that
+  # calls this workflow_dispatch trigger directly — it supports the
+  # Europe/London timezone natively (auto-handles BST/GMT) and fires with
+  # much tighter precision than GitHub's own `schedule:` trigger, which has
+  # no timing guarantee. See README for the cron-job.org setup.
   workflow_dispatch: {}
 
 permissions:

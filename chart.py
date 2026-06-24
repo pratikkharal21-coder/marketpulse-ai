@@ -21,10 +21,20 @@ GRID_COLOR = "#e5e7eb"
 
 def _save_fig(fig):
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", facecolor="white")
+    fig.savefig(buf, format="png", facecolor="white", bbox_inches="tight")
     plt.close(fig)
     buf.seek(0)
     return buf.read()
+
+
+def _wrap_title(text, width=42, max_lines=2):
+    if not text:
+        return text
+    wrapped_lines = textwrap.wrap(text, width=width)
+    if len(wrapped_lines) > max_lines:
+        wrapped_lines = wrapped_lines[:max_lines]
+        wrapped_lines[-1] = wrapped_lines[-1].rstrip(".,;: ") + "…"
+    return "\n".join(wrapped_lines)
 
 
 def _fetch_history(ticker):
@@ -60,7 +70,8 @@ def generate_price_chart(ticker, label=None):
     ax.plot(closes.index, closes.values, color=color, linewidth=1.8)
     ax.fill_between(closes.index, closes.values, first_price, color=color, alpha=0.08)
 
-    ax.set_title(f"{label or ticker}  {arrow} {pct_change:+.2f}%", color=color, fontsize=14, fontweight="bold", loc="left")
+    title = _wrap_title(label or ticker, width=42)
+    ax.set_title(f"{title}\n{arrow} {pct_change:+.2f}%", color=color, fontsize=13, fontweight="bold", loc="left")
     ax.text(0.99, 0.97, f"{last_price:,.2f}", transform=ax.transAxes, ha="right", va="top", fontsize=11, color="#1a1a1a")
 
     locator = mdates.AutoDateLocator(minticks=4, maxticks=7)
@@ -105,7 +116,7 @@ def generate_bar_chart(spec):
     fig, ax = plt.subplots(figsize=(6, 3.5), dpi=140)
     bars = ax.bar(labels, values, color=colors, width=0.6)
 
-    ax.set_title(title, fontsize=14, fontweight="bold", loc="left", color="#1a1a1a")
+    ax.set_title(_wrap_title(title, width=42), fontsize=14, fontweight="bold", loc="left", color="#1a1a1a")
     ax.axhline(0, color="#999999", linewidth=0.8)
 
     for bar, v in zip(bars, values):

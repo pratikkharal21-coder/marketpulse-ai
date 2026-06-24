@@ -25,6 +25,7 @@ MAX_STORIES_ANALYZED = int(os.environ.get("MAX_STORIES_ANALYZED", "10"))
 MAX_SHORT_THREADS = int(os.environ.get("MAX_SHORT_THREADS", "5"))
 MAX_LONGFORM_STORIES = int(os.environ.get("MAX_LONGFORM_STORIES", "2"))
 LOOKBACK_HOURS = int(os.environ.get("LOOKBACK_HOURS", "8"))
+REGEN_THRESHOLD = int(os.environ.get("REGEN_THRESHOLD", "6"))
 
 BASE_DIR = Path(__file__).parent
 STATE_PATH = BASE_DIR / "state.json"

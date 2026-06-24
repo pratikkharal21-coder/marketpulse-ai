@@ -4,6 +4,7 @@ import config
 from ai_client import call_for_json
 from chart import resolve_visual
 from persona import ENGAGEMENT_GUIDELINES, PERSONA, VALUE_GUIDELINES, VISUAL_GUIDELINES
+from regen import maybe_regenerate
 
 logger = logging.getLogger("marketpulse.generate")
 
@@ -60,6 +61,9 @@ def generate_short_thread(story):
         result = call_for_json(config.GENERATE_MODEL, SYSTEM_PROMPT, user_content, max_tokens=1024)
         if not isinstance(result, dict):
             raise ValueError(f"Expected a JSON object, got {type(result).__name__}")
+
+        if result.get("thread"):
+            result = maybe_regenerate(config.GENERATE_MODEL, SYSTEM_PROMPT, user_content, result, max_tokens=1024)
 
         thread = [t for t in result.get("thread", []) if t]
         if not thread:

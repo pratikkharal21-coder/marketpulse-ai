@@ -31,6 +31,14 @@ non-partisan.
 catalysts to monitor, followed directly by a question asking readers which scenario (from step 4) \
 they find more likely, or what they're watching that wasn't covered.
 
+Where the story supports it, structure ONE tweet in this thread as a saveable reference: a short \
+numbered framework (e.g. "3 things that determine X: 1) ... 2) ... 3) ..."), a dated "what to \
+watch" checklist of specific upcoming dates/events, or an if-X-then-Y scenario map (e.g. "If CPI \
+prints above 3.0% Thursday: Y. If below: Z."). The reason someone would want to save this tweet \
+must be implicit in the specific dates, levels, or conditions it contains — never write the \
+literal words "bookmark this," "save this," or any equivalent. If the story doesn't naturally \
+support a structure like this, skip it entirely; not every deep dive needs one.
+
 """
     + HOOK_SHAPE_TAXONOMY
     + "\n\n"

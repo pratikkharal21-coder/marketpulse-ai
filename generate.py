@@ -3,7 +3,7 @@ import logging
 import config
 from ai_client import call_for_json
 from chart import resolve_visual
-from persona import ENGAGEMENT_GUIDELINES, PERSONA, VALUE_GUIDELINES, VISUAL_GUIDELINES
+from persona import ENGAGEMENT_GUIDELINES, HOOK_SHAPE_TAXONOMY, PERSONA, VALUE_GUIDELINES, VISUAL_GUIDELINES
 from regen import maybe_regenerate
 
 logger = logging.getLogger("marketpulse.generate")
@@ -14,8 +14,8 @@ SYSTEM_PROMPT = (
 
 Given one news story, write a short, ready-to-post X/Twitter thread of 3-5 tweets covering it. \
 The thread should:
-- Open with a hook tied to the core fact — a specific number, a sharp contrast, or a direct \
-question — not a flat headline restatement.
+- Open with a hook tied to the core fact — not a flat headline restatement. See the hook shape \
+taxonomy below for how to pick and vary it.
 - Add one tweet of immediate market context — what it means for the relevant markets or sectors \
 right now.
 - Include at least one concrete number or data point from the story.
@@ -23,6 +23,8 @@ right now.
 followed directly by a question that invites the reader to reply with their own take.
 
 """
+    + HOOK_SHAPE_TAXONOMY
+    + "\n\n"
     + VALUE_GUIDELINES
     + "\n\n"
     + ENGAGEMENT_GUIDELINES
@@ -36,6 +38,7 @@ story — no generic filler.
 
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 {"thread": ["1/4 ...", "2/4 ...", ...], \
+"hook_shape": "number_led"|"contrarian"|"stakes"|"question"|"surprising_fact", \
 "visual_type": "price_chart"|"bar_chart"|"histogram"|"pie_chart"|"trend_chart"|"flowchart"|"none", \
 "ticker": "AAPL" or null, \
 "bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
@@ -47,7 +50,16 @@ Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 )
 
 
-def generate_short_thread(story):
+def generate_short_thread(story, used_hooks=None):
+    used_hooks = used_hooks if used_hooks is not None else []
+    hook_note = (
+        f"\n\nHook shapes already used so far in this batch: {used_hooks}. Avoid reusing any "
+        f"shape that already appears twice in that list; prefer an unused shape if the story "
+        f"allows it."
+        if used_hooks
+        else ""
+    )
+
     user_content = (
         f"Story source category: {story['source']}\n"
         f"Headline: {story['title']}\n"
@@ -55,6 +67,7 @@ def generate_short_thread(story):
         f"Link: {story['link']}\n"
         f"Triage notes: relevance={story.get('relevance')}, impact={story.get('impact')}, "
         f"reason={story.get('triage_reason')}"
+        f"{hook_note}"
     )
 
     try:
@@ -73,6 +86,7 @@ def generate_short_thread(story):
 
         return {
             "thread": thread,
+            "hook_shape": result.get("hook_shape"),
             "chart_image": chart_image,
             "relevance": result.get("relevance", 0),
             "expected_engagement": result.get("expected_engagement", 0),
@@ -87,11 +101,15 @@ def generate_short_thread(story):
         return None
 
 
-def generate_short_threads(stories):
+def generate_short_threads(stories, used_hooks=None):
+    if used_hooks is None:
+        used_hooks = []
     threads = []
     for story in stories[: config.MAX_SHORT_THREADS]:
-        thread = generate_short_thread(story)
+        thread = generate_short_thread(story, used_hooks)
         if thread:
             threads.append(thread)
+            if thread.get("hook_shape"):
+                used_hooks.append(thread["hook_shape"])
     logger.info("Generated %d short thread(s) from %d candidate stories", len(threads), len(stories))
     return threads

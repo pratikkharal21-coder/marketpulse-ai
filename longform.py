@@ -3,7 +3,7 @@ import logging
 import config
 from ai_client import call_for_json
 from chart import resolve_visual
-from persona import ENGAGEMENT_GUIDELINES, PERSONA, VALUE_GUIDELINES, VISUAL_GUIDELINES
+from persona import ENGAGEMENT_GUIDELINES, HOOK_SHAPE_TAXONOMY, PERSONA, VALUE_GUIDELINES, VISUAL_GUIDELINES
 from regen import maybe_regenerate
 
 logger = logging.getLogger("marketpulse.longform")
@@ -14,8 +14,8 @@ SYSTEM_PROMPT = (
 
 Write a deep-dive X/Twitter thread (8-10 tweets) on one major financial/market story — going far \
 beyond a quick take. Structure:
-1. Hook tweet — a sharp question, bold statement, or surprising fact. This is the single most \
-important tweet for getting someone to open the thread — make it count.
+1. Hook tweet — this is the single most important tweet for getting someone to open the thread —
+make it count. See the hook shape taxonomy below for how to pick and vary it.
 2. Context — why this matters right now, including at least one historical comparison (a past \
 similar event, cycle, or precedent) to anchor the analysis.
 3. Concrete data — specific numbers and recent developments, and where relevant, probabilities \
@@ -32,6 +32,8 @@ catalysts to monitor, followed directly by a question asking readers which scena
 they find more likely, or what they're watching that wasn't covered.
 
 """
+    + HOOK_SHAPE_TAXONOMY
+    + "\n\n"
     + VALUE_GUIDELINES
     + "\n\n"
     + ENGAGEMENT_GUIDELINES
@@ -45,6 +47,7 @@ story — no generic filler.
 
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 {"thread": ["1/9 ...", "2/9 ...", ...], \
+"hook_shape": "number_led"|"contrarian"|"stakes"|"question"|"surprising_fact", \
 "visual_type": "price_chart"|"bar_chart"|"histogram"|"pie_chart"|"trend_chart"|"flowchart"|"none", \
 "ticker": "AAPL" or null, \
 "bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
@@ -56,7 +59,16 @@ Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 )
 
 
-def generate_longform(story):
+def generate_longform(story, used_hooks=None):
+    used_hooks = used_hooks if used_hooks is not None else []
+    hook_note = (
+        f"\n\nHook shapes already used so far in this batch: {used_hooks}. Avoid reusing any "
+        f"shape that already appears twice in that list; prefer an unused shape if the story "
+        f"allows it."
+        if used_hooks
+        else ""
+    )
+
     user_content = (
         f"Story source category: {story['source']}\n"
         f"Headline: {story['title']}\n"
@@ -64,6 +76,7 @@ def generate_longform(story):
         f"Link: {story['link']}\n"
         f"Triage notes: relevance={story.get('relevance')}, impact={story.get('impact')}, "
         f"reason={story.get('triage_reason')}"
+        f"{hook_note}"
     )
 
     try:
@@ -82,6 +95,7 @@ def generate_longform(story):
 
         return {
             "thread": thread,
+            "hook_shape": result.get("hook_shape"),
             "chart_image": chart_image,
             "relevance": result.get("relevance", 0),
             "expected_engagement": result.get("expected_engagement", 0),
@@ -96,11 +110,15 @@ def generate_longform(story):
         return None
 
 
-def generate_top_longform(stories):
+def generate_top_longform(stories, used_hooks=None):
+    if used_hooks is None:
+        used_hooks = []
     items = []
     for story in stories[: config.MAX_LONGFORM_STORIES]:
-        longform = generate_longform(story)
+        longform = generate_longform(story, used_hooks)
         if longform:
             items.append(longform)
+            if longform.get("hook_shape"):
+                used_hooks.append(longform["hook_shape"])
     logger.info("Generated %d deep-dive thread(s) from %d candidate stories", len(items), len(stories))
     return items

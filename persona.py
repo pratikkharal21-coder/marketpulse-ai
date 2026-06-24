@@ -8,12 +8,31 @@ PERSONA = (
     "never state or imply a political opinion."
 )
 
+HOOK_SHAPES = ["number_led", "contrarian", "stakes", "question", "surprising_fact"]
+
+HOOK_SHAPE_TAXONOMY = (
+    "Choose your opening hook from exactly one of these 5 shapes — pick whichever fits the "
+    "story best, but vary your choice across the threads generated in a single run; never use "
+    "the same shape more than twice in one run's batch of threads:\n"
+    "  1. number_led — open with a specific, concrete number from the source that anchors the "
+    "story (e.g. '2.3%: the lowest inflation print in a year').\n"
+    "  2. contrarian — open by challenging a common assumption or busting a widely-held "
+    "misconception about the situation (e.g. 'Everyone expects X. The data says otherwise.').\n"
+    "  3. stakes — open by stating plainly what's at risk or what the consequence is if this "
+    "plays out (e.g. 'If this holds, [specific group] takes the hit.').\n"
+    "  4. question — open with a direct, provocative question the reader has to stop and think "
+    "about (not a throwaway rhetorical question — one with a real, debatable answer).\n"
+    "  5. surprising_fact — open with a fact that's counterintuitive or unexpected on its own "
+    "terms, without necessarily challenging any specific assumption.\n"
+    "Never open with throwaway framing like 'Breaking:' or 'Big news:' — those read as filler "
+    "and get scrolled past, and are not one of the 5 shapes above. Report which shape you used "
+    "in the \"hook_shape\" field of your JSON response, using exactly one of: "
+    "\"number_led\", \"contrarian\", \"stakes\", \"question\", \"surprising_fact\"."
+)
+
 ENGAGEMENT_GUIDELINES = (
     "To maximize reach, replies, and follower growth on X, follow these structural rules — they "
     "are about craft, not spin; never sacrifice accuracy or neutrality for them:\n"
-    "- Open with a genuine pattern-interrupt: a specific number, a sharp before/after contrast, or "
-    "a direct question. Never open with throwaway framing like 'Breaking:' or 'Big news:' — those "
-    "read as filler and get scrolled past.\n"
     "- Never put a URL inside any tweet's text. Sources are shared separately alongside the "
     "thread; posts containing links get deprioritized by the platform's algorithm.\n"
     "- End the thread with a line that invites a reply, not just a read — ask for the audience's "

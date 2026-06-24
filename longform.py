@@ -43,10 +43,15 @@ the number prefix, must be under 280 characters. Ground every claim in the speci
 story — no generic filler.
 
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
-{"thread": ["1/9 ...", "2/9 ...", ...], "visual_type": "price_chart"|"bar_chart"|"flowchart"|"none", \
-"ticker": "AAPL" or null, "bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
-"flowchart": {"steps": [...]} or null, "relevance": 0-10, "expected_engagement": 0-10, \
-"market_significance": 0-10, "confidence": 0-10}"""
+{"thread": ["1/9 ...", "2/9 ...", ...], \
+"visual_type": "price_chart"|"bar_chart"|"histogram"|"pie_chart"|"trend_chart"|"flowchart"|"none", \
+"ticker": "AAPL" or null, \
+"bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
+"histogram": {"title": "...", "values": [...], "unit": "..."} or null, \
+"pie_chart": {"title": "...", "labels": [...], "values": [...]} or null, \
+"trend_chart": {"title": "...", "labels": [...], "values": [...], "fit": "linear"|"cubic", "unit": "..."} or null, \
+"flowchart": {"steps": [...]} or null, \
+"relevance": 0-10, "expected_engagement": 0-10, "market_significance": 0-10, "confidence": 0-10}"""
 )
 
 

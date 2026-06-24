@@ -8,6 +8,7 @@ matplotlib.use("Agg")
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
+import numpy as np
 import yfinance as yf
 
 logger = logging.getLogger("marketpulse.chart")
@@ -15,8 +16,13 @@ logger = logging.getLogger("marketpulse.chart")
 GREEN = "#16a34a"
 RED = "#dc2626"
 BLUE = "#2563eb"
+AMBER = "#b45309"
+PURPLE = "#7c3aed"
+GRAY = "#6b7280"
+TEAL = "#0d9488"
 BOX_FILL = "#eff6ff"
 GRID_COLOR = "#e5e7eb"
+PIE_PALETTE = [BLUE, GREEN, AMBER, RED, PURPLE, TEAL, GRAY]
 
 
 def _save_fig(fig):
@@ -137,6 +143,141 @@ def generate_bar_chart(spec):
     return _save_fig(fig)
 
 
+def generate_histogram(spec):
+    if not spec:
+        return None
+
+    title = spec.get("title") or ""
+    values = spec.get("values") or []
+    unit = spec.get("unit") or ""
+
+    if len(values) < 5:
+        logger.warning("Malformed histogram spec, skipping: %s", spec)
+        return None
+
+    try:
+        values = [float(v) for v in values]
+    except (TypeError, ValueError):
+        logger.warning("Non-numeric values in histogram spec, skipping: %s", spec)
+        return None
+
+    bins = min(max(int(spec.get("bins") or 8), 4), 20)
+
+    fig, ax = plt.subplots(figsize=(6, 3.5), dpi=140)
+    ax.hist(values, bins=bins, color=BLUE, edgecolor="white", linewidth=0.8)
+
+    ax.set_title(_wrap_title(title, width=42), fontsize=14, fontweight="bold", loc="left", color="#1a1a1a")
+    if unit:
+        ax.set_xlabel(unit, fontsize=9, color="#666666")
+    ax.set_ylabel("Count", fontsize=9, color="#666666")
+
+    ax.grid(axis="y", color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    return _save_fig(fig)
+
+
+def generate_pie_chart(spec):
+    if not spec:
+        return None
+
+    title = spec.get("title") or ""
+    labels = spec.get("labels") or []
+    values = spec.get("values") or []
+
+    if not labels or not values or len(labels) != len(values) or len(labels) < 2:
+        logger.warning("Malformed pie_chart spec, skipping: %s", spec)
+        return None
+
+    try:
+        values = [abs(float(v)) for v in values]
+    except (TypeError, ValueError):
+        logger.warning("Non-numeric values in pie_chart spec, skipping: %s", spec)
+        return None
+
+    if sum(values) <= 0:
+        logger.warning("Pie chart values sum to zero, skipping: %s", spec)
+        return None
+
+    colors = [PIE_PALETTE[i % len(PIE_PALETTE)] for i in range(len(labels))]
+
+    fig, ax = plt.subplots(figsize=(6, 4), dpi=140)
+    ax.pie(
+        values,
+        labels=labels,
+        colors=colors,
+        autopct="%1.0f%%",
+        startangle=90,
+        textprops={"fontsize": 9.5, "color": "#1a1a1a"},
+        wedgeprops={"linewidth": 1.5, "edgecolor": "white"},
+    )
+    ax.set_title(_wrap_title(title, width=42), fontsize=14, fontweight="bold", loc="left", color="#1a1a1a")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    return _save_fig(fig)
+
+
+def generate_trend_chart(spec):
+    if not spec:
+        return None
+
+    title = spec.get("title") or ""
+    labels = spec.get("labels") or []
+    values = spec.get("values") or []
+    unit = spec.get("unit") or ""
+    fit = (spec.get("fit") or "linear").lower()
+
+    if not labels or not values or len(labels) != len(values) or len(labels) < 3:
+        logger.warning("Malformed trend_chart spec, skipping: %s", spec)
+        return None
+
+    try:
+        values = [float(v) for v in values]
+    except (TypeError, ValueError):
+        logger.warning("Non-numeric values in trend_chart spec, skipping: %s", spec)
+        return None
+
+    x = np.arange(len(values))
+    degree = 3 if fit == "cubic" and len(values) >= 4 else 1
+
+    fig, ax = plt.subplots(figsize=(6, 3.5), dpi=140)
+    ax.plot(x, values, "o-", color=BLUE, linewidth=1.6, markersize=5, label="Actual")
+
+    try:
+        coeffs = np.polyfit(x, values, degree)
+        x_smooth = np.linspace(x.min(), x.max(), 100)
+        y_smooth = np.polyval(coeffs, x_smooth)
+        fit_label = "Cubic trend" if degree == 3 else "Linear trend"
+        ax.plot(x_smooth, y_smooth, "--", color=AMBER, linewidth=1.8, label=fit_label)
+    except Exception as exc:
+        logger.warning("Trend fit failed: %s", exc)
+
+    ax.set_title(_wrap_title(title, width=42), fontsize=14, fontweight="bold", loc="left", color="#1a1a1a")
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels)
+    if unit:
+        ax.set_ylabel(unit, fontsize=9, color="#666666")
+
+    ax.legend(loc="best", fontsize=8.5, frameon=False)
+    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    return _save_fig(fig)
+
+
 def resolve_visual(result, label=None):
     """Dispatch to the right chart renderer based on result['visual_type']."""
     visual_type = result.get("visual_type") or "none"
@@ -144,6 +285,12 @@ def resolve_visual(result, label=None):
         return generate_price_chart(result.get("ticker"), label=label)
     if visual_type == "bar_chart":
         return generate_bar_chart(result.get("bar_chart"))
+    if visual_type == "histogram":
+        return generate_histogram(result.get("histogram"))
+    if visual_type == "pie_chart":
+        return generate_pie_chart(result.get("pie_chart"))
+    if visual_type == "trend_chart":
+        return generate_trend_chart(result.get("trend_chart"))
     if visual_type == "flowchart":
         return generate_flowchart(result.get("flowchart"))
     return None

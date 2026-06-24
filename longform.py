@@ -75,7 +75,7 @@ Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 )
 
 
-def generate_longform(story, used_hooks=None):
+def generate_longform(story, used_hooks=None, slot_framing=None):
     used_hooks = used_hooks if used_hooks is not None else []
     hook_note = (
         f"\n\nHook shapes already used so far in this batch: {used_hooks}. Avoid reusing any "
@@ -84,6 +84,7 @@ def generate_longform(story, used_hooks=None):
         if used_hooks
         else ""
     )
+    slot_note = f"\n\nRun context: {slot_framing}" if slot_framing else ""
 
     user_content = (
         f"Story source category: {story['source']}\n"
@@ -93,6 +94,7 @@ def generate_longform(story, used_hooks=None):
         f"Triage notes: relevance={story.get('relevance')}, impact={story.get('impact')}, "
         f"reason={story.get('triage_reason')}"
         f"{hook_note}"
+        f"{slot_note}"
     )
 
     try:
@@ -133,12 +135,12 @@ def generate_longform(story, used_hooks=None):
         return None
 
 
-def generate_top_longform(stories, used_hooks=None):
+def generate_top_longform(stories, used_hooks=None, slot_framing=None):
     if used_hooks is None:
         used_hooks = []
     items = []
     for story in stories[: config.MAX_LONGFORM_STORIES]:
-        longform = generate_longform(story, used_hooks)
+        longform = generate_longform(story, used_hooks, slot_framing)
         if longform:
             items.append(longform)
             if longform.get("hook_shape"):

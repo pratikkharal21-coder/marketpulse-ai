@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import config
 import feeds
@@ -17,9 +18,60 @@ logging.basicConfig(
 )
 logger = logging.getLogger("marketpulse.main")
 
+LONDON_TZ = ZoneInfo("Europe/London")
+
+# (slot name, London-local hour, London-local minute, framing note for the generator prompts)
+RUN_SLOTS = [
+    (
+        "premarket",
+        7,
+        0,
+        "This is the pre-market digest. Frame coverage forward-looking: set the agenda for the "
+        "trading day ahead -- what to watch and why it matters today, not a recap of what already "
+        "happened.",
+    ),
+    (
+        "open",
+        14,
+        30,
+        "This is the US market open digest. Frame coverage reactively: focus on what is moving "
+        "right now, in real time, and why.",
+    ),
+    (
+        "close",
+        21,
+        0,
+        "This is the US market close digest. Frame coverage as a recap: summarize what happened "
+        "today and what it sets up for tomorrow's session.",
+    ),
+]
+
+
+def get_run_slot(now=None):
+    """Derive which of the 3 daily slots (premarket/open/close) this run corresponds to,
+    based on current London-local time (auto-adjusts for BST/GMT). Workflow_dispatch carries
+    no parameters, so this is inferred from the clock rather than passed in by the trigger.
+    Falls back to whichever slot is nearest in time-of-day, so manual/off-schedule runs still
+    get a sensible framing instead of erroring."""
+    now = now or datetime.now(timezone.utc)
+    london_now = now.astimezone(LONDON_TZ)
+    current_minutes = london_now.hour * 60 + london_now.minute
+
+    def cyclic_distance(a, b):
+        diff = abs(a - b) % (24 * 60)
+        return min(diff, 24 * 60 - diff)
+
+    name, hour, minute, framing = min(
+        RUN_SLOTS, key=lambda slot: cyclic_distance(current_minutes, slot[1] * 60 + slot[2])
+    )
+    return name, framing
+
 
 def run():
     logger.info("=== MarketPulse run starting ===")
+
+    slot_name, slot_framing = get_run_slot()
+    logger.info("Run slot: %s", slot_name)
 
     st = state.load()
     st = state.prune(st)
@@ -36,8 +88,8 @@ def run():
         return
 
     used_hooks = []
-    threads = generate.generate_short_threads(survivors, used_hooks)
-    deep_dives = longform.generate_top_longform(survivors, used_hooks)
+    threads = generate.generate_short_threads(survivors, used_hooks, slot_framing)
+    deep_dives = longform.generate_top_longform(survivors, used_hooks, slot_framing)
 
     report_html, inline_images = report.render(threads, len(survivors), deep_dives)
     subject = f"MarketPulse AI — {len(threads)} threads"

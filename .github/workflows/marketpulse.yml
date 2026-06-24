@@ -33,9 +33,21 @@ jobs:
 
       - name: Persist state.json
         if: always()
+        continue-on-error: true
         run: |
           git config user.name "marketpulse-bot"
           git config user.email "actions@users.noreply.github.com"
           git add state.json
-          git diff --cached --quiet || git commit -m "Update state [skip ci]"
-          git push
+          if git diff --cached --quiet; then
+            echo "No state changes to commit."
+            exit 0
+          fi
+          git commit -m "Update state [skip ci]"
+          for attempt in 1 2 3; do
+            if git push; then
+              exit 0
+            fi
+            echo "Push rejected (attempt $attempt), rebasing onto latest and retrying..."
+            git pull --rebase
+          done
+          echo "Could not push state.json after retries — a concurrent run likely already persisted it. Continuing without failing the job."

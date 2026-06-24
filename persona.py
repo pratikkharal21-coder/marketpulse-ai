@@ -33,7 +33,15 @@ VALUE_GUIDELINES = (
     "paired with WHY it matters: the context behind it, how it compares to expectations or "
     "history, or what it implies for traders and investors going forward. If a tweet states a "
     "number, the same tweet (or the very next one) must explain its significance — never leave a "
-    "number to stand alone."
+    "number to stand alone.\n\n"
+    "Anti-fabrication rule, non-negotiable: only cite a specific number if it appears in the "
+    "provided headline/summary, or can be read directly off the attached price chart (when one is "
+    "generated). Never invent, estimate, or round a precise figure that wasn't actually given to "
+    "you. If the source material has no specific number for a point you want to make, lead with "
+    "the qualitative development instead — e.g. 'shares fell sharply' rather than guessing a "
+    "percentage, or 'the Fed signaled a possible cut' rather than inventing a probability. A "
+    "fabricated precise number is worse than no number at all — it sounds authoritative while "
+    "being wrong, and on a finance account that destroys credibility faster than anything else."
 )
 
 VISUAL_GUIDELINES = (

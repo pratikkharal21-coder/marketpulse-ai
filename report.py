@@ -32,6 +32,20 @@ TEMPLATE = """
     <div style="font-size: 12px; margin-top: 6px;">
       <a href="{{ item.story_link }}" style="color: #2563eb;">{{ item.story_title }}</a>
     </div>
+    {% if item.seed_replies %}
+    <div style="font-size: 11px; color: #999; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.05em;">
+      Seed replies
+    </div>
+    {% for reply in item.seed_replies %}
+    <div style="font-size: 12px; color: #777; margin-top: 4px;">— {{ reply }}</div>
+    {% endfor %}
+    {% endif %}
+    {% if item.quote_angle %}
+    <div style="font-size: 11px; color: #999; margin-top: 10px; text-transform: uppercase; letter-spacing: 0.05em;">
+      Quote angle
+    </div>
+    <div style="font-size: 12px; color: #777; margin-top: 4px;">{{ item.quote_angle }}</div>
+    {% endif %}
   </div>
   {% endmacro %}
 

@@ -36,6 +36,13 @@ Number each tweet by prefixing its text with "N/TOTAL " (e.g. "1/4 ..."). Each t
 the number prefix, must be under 280 characters. Ground every claim in the specific facts of the \
 story — no generic filler.
 
+Also provide a small engagement kit for after the thread is posted:
+- "seed_replies": 2-3 short follow-up replies the user could post under their own thread to keep \
+the conversation going (e.g. a clarifying stat, a counterpoint, a follow-up question). Each must \
+be a complete, ready-to-post reply under 280 characters.
+- "quote_angle": one short line (under 200 characters) suggesting a distinct take someone could \
+use to quote-post this thread later — a different angle than the thread itself, not a summary of it.
+
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 {"thread": ["1/4 ...", "2/4 ...", ...], \
 "hook_shape": "number_led"|"contrarian"|"stakes"|"question"|"surprising_fact", \
@@ -46,6 +53,7 @@ Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 "pie_chart": {"title": "...", "labels": [...], "values": [...]} or null, \
 "trend_chart": {"title": "...", "labels": [...], "values": [...], "fit": "linear"|"cubic", "unit": "..."} or null, \
 "flowchart": {"steps": [...]} or null, \
+"seed_replies": ["...", "..."], "quote_angle": "...", \
 "relevance": 0-10, "expected_engagement": 0-10, "market_significance": 0-10, "confidence": 0-10}"""
 )
 
@@ -84,10 +92,17 @@ def generate_short_thread(story, used_hooks=None):
 
         chart_image = resolve_visual(result, label=story["title"])
 
+        seed_replies = result.get("seed_replies") or []
+        if not isinstance(seed_replies, list):
+            seed_replies = []
+        seed_replies = [r for r in seed_replies if r]
+
         return {
             "thread": thread,
             "hook_shape": result.get("hook_shape"),
             "chart_image": chart_image,
+            "seed_replies": seed_replies,
+            "quote_angle": result.get("quote_angle") or None,
             "relevance": result.get("relevance", 0),
             "expected_engagement": result.get("expected_engagement", 0),
             "market_significance": result.get("market_significance", 0),

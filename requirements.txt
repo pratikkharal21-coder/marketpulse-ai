@@ -5,3 +5,8 @@ jinja2>=3.1.4
 yfinance>=0.2.40
 matplotlib>=3.8.0
 numpy>=1.26.0
+mplfinance>=0.12.10b0
+# Pinned below 3.0: mplfinance's Point & Figure renderer crashes under pandas 3.x
+# (positional indexing on a Series raises KeyError in its internal ATR calc -- an
+# upstream bug, not ours). Safe to lift once mplfinance ships a fix.
+pandas>=2.0,<3

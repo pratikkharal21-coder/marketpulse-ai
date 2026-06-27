@@ -63,13 +63,14 @@ use to quote-post this thread later — a different angle than the thread itself
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 {"thread": ["1/9 ...", "2/9 ...", ...], \
 "hook_shape": "number_led"|"contrarian"|"stakes"|"question"|"surprising_fact", \
-"visual_type": "price_chart"|"bar_chart"|"histogram"|"pie_chart"|"trend_chart"|"flowchart"|"none", \
+"visual_type": "price_chart"|"candlestick_chart"|"renko_chart"|"pnf_chart"|"bar_chart"|"histogram"|"pie_chart"|"trend_chart"|"flowchart"|"real_world_image"|"none", \
 "ticker": "AAPL" or null, \
 "bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
 "histogram": {"title": "...", "values": [...], "unit": "..."} or null, \
 "pie_chart": {"title": "...", "labels": [...], "values": [...]} or null, \
 "trend_chart": {"title": "...", "labels": [...], "values": [...], "fit": "linear"|"cubic", "unit": "..."} or null, \
 "flowchart": {"steps": [...]} or null, \
+"image_query": "..." or null, \
 "seed_replies": ["...", "..."], "quote_angle": "...", \
 "relevance": 0-10, "expected_engagement": 0-10, "market_significance": 0-10, "confidence": 0-10}"""
 )

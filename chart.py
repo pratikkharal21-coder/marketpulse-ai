@@ -1,6 +1,10 @@
 import io
+import json
 import logging
 import textwrap
+import urllib.error
+import urllib.parse
+import urllib.request
 
 import matplotlib
 
@@ -8,10 +12,15 @@ matplotlib.use("Agg")
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyBboxPatch
+import mplfinance as mpf
 import numpy as np
 import yfinance as yf
+from PIL import Image, ImageDraw
 
 logger = logging.getLogger("marketpulse.chart")
+
+WIKI_API_URL = "https://en.wikipedia.org/w/api.php"
+WIKI_USER_AGENT = "MarketPulseAI/1.0 (single-user personal news digest)"
 
 GREEN = "#16a34a"
 RED = "#dc2626"
@@ -53,6 +62,230 @@ def _fetch_history(ticker):
         if not data.empty and len(data) >= 2:
             return data
     return None
+
+
+def _fetch_daily_history(ticker, period="3mo"):
+    """Daily-bar history for technical chart types (candlestick/Renko/PnF) -- these are
+    conventionally read on daily candles, unlike the simple at-a-glance price_chart above."""
+    try:
+        data = yf.Ticker(ticker).history(period=period, interval="1d")
+    except Exception as exc:
+        logger.warning("yfinance daily fetch failed for %s (%s): %s", ticker, period, exc)
+        return None
+    if data is None or data.empty:
+        return None
+    data = data.dropna(subset=["Open", "High", "Low", "Close"])
+    return data if len(data) >= 10 else None
+
+
+def detect_candlestick_patterns(data, lookback=5):
+    """Rule-based detection of well-defined reversal patterns on the most recent `lookback`
+    candles. Pure arithmetic on real OHLC data -- the model never asserts these, so there is
+    no fabrication risk; a pattern is only ever shown if the price data actually satisfies its
+    textbook definition. Returns a list of (position, pattern_name, direction) tuples."""
+    patterns = []
+    n = len(data)
+    opens = data["Open"].values
+    highs = data["High"].values
+    lows = data["Low"].values
+    closes = data["Close"].values
+
+    start = max(2, n - lookback)
+    for i in range(start, n):
+        o, h, l, c = opens[i], highs[i], lows[i], closes[i]
+        rng = h - l
+        if rng <= 0:
+            continue
+        body = abs(c - o)
+        upper_wick = h - max(o, c)
+        lower_wick = min(o, c) - l
+
+        if body <= 0.1 * rng:
+            patterns.append((i, "Doji", "neutral"))
+        elif body > 0 and lower_wick >= 2 * body and upper_wick <= 0.3 * body:
+            patterns.append((i, "Hammer", "bullish"))
+        elif body > 0 and upper_wick >= 2 * body and lower_wick <= 0.3 * body:
+            patterns.append((i, "Inverted Hammer", "bearish"))
+
+        po, pc = opens[i - 1], closes[i - 1]
+        if pc < po and c > o and o < pc and c > po:
+            patterns.append((i, "Bullish Engulfing", "bullish"))
+        elif pc > po and c < o and o > pc and c < po:
+            patterns.append((i, "Bearish Engulfing", "bearish"))
+
+        if i >= 2:
+            o1, c1 = opens[i - 2], closes[i - 2]
+            o2, c2 = opens[i - 1], closes[i - 1]
+            body1 = abs(c1 - o1)
+            body2 = abs(c2 - o2)
+            midpoint1 = (o1 + c1) / 2
+            if c1 < o1 and body1 > 0 and body2 <= 0.3 * body1 and c > o and c > midpoint1:
+                patterns.append((i, "Morning Star", "bullish"))
+            elif c1 > o1 and body1 > 0 and body2 <= 0.3 * body1 and c < o and c < midpoint1:
+                patterns.append((i, "Evening Star", "bearish"))
+
+    return patterns
+
+
+def _technical_style():
+    mc = mpf.make_marketcolors(up=GREEN, down=RED, edge="inherit", wick="inherit", volume="inherit")
+    return mpf.make_mpf_style(marketcolors=mc, gridcolor=GRID_COLOR, facecolor="white", figcolor="white")
+
+
+def generate_candlestick_chart(ticker, label=None):
+    if not ticker:
+        return None
+
+    ticker = ticker.strip().replace("/", "").replace(" ", "")
+    data = _fetch_daily_history(ticker)
+    if data is None:
+        logger.warning("No usable daily history for ticker %s", ticker)
+        return None
+
+    first_close = float(data["Close"].iloc[0])
+    last_close = float(data["Close"].iloc[-1])
+    pct_change = (last_close - first_close) / first_close * 100
+    arrow = "▲" if pct_change >= 0 else "▼"
+    title = f"{_wrap_title(label or ticker, width=42)}\n{arrow} {pct_change:+.2f}%"
+
+    try:
+        fig, axlist = mpf.plot(
+            data, type="candle", style=_technical_style(), returnfig=True,
+            figsize=(6, 3.8), title=title, tight_layout=True,
+        )
+    except Exception as exc:
+        logger.warning("Candlestick chart failed for %s: %s", ticker, exc)
+        return None
+
+    ax = axlist[0]
+    span = float(data["High"].max() - data["Low"].min()) or 1.0
+    for i, name, direction in detect_candlestick_patterns(data, lookback=5):
+        color = GREEN if direction == "bullish" else RED if direction == "bearish" else GRAY
+        y = float(data["High"].iloc[i])
+        ax.annotate(
+            name,
+            xy=(i, y),
+            xytext=(i, y + span * 0.12),
+            ha="center",
+            fontsize=8,
+            color=color,
+            fontweight="bold",
+            arrowprops=dict(arrowstyle="-|>", color=color, lw=1.2),
+        )
+
+    return _save_fig(fig)
+
+
+def generate_renko_chart(ticker, label=None):
+    if not ticker:
+        return None
+
+    ticker = ticker.strip().replace("/", "").replace(" ", "")
+    data = _fetch_daily_history(ticker)
+    if data is None:
+        logger.warning("No usable daily history for ticker %s", ticker)
+        return None
+
+    title = _wrap_title(label or ticker, width=42)
+    try:
+        fig, axlist = mpf.plot(
+            data, type="renko", style=_technical_style(), returnfig=True,
+            figsize=(6, 3.8), title=title, tight_layout=True,
+        )
+    except Exception as exc:
+        logger.warning("Renko chart failed for %s: %s", ticker, exc)
+        return None
+    return _save_fig(fig)
+
+
+def generate_pnf_chart(ticker, label=None):
+    if not ticker:
+        return None
+
+    ticker = ticker.strip().replace("/", "").replace(" ", "")
+    data = _fetch_daily_history(ticker)
+    if data is None:
+        logger.warning("No usable daily history for ticker %s", ticker)
+        return None
+
+    title = _wrap_title(label or ticker, width=42)
+    try:
+        fig, axlist = mpf.plot(
+            data, type="pnf", style=_technical_style(), returnfig=True,
+            figsize=(6, 3.8), title=title, tight_layout=True,
+        )
+    except Exception as exc:
+        logger.warning("Point & Figure chart failed for %s: %s", ticker, exc)
+        return None
+    return _save_fig(fig)
+
+
+def _caption_image(image_bytes, title):
+    try:
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    except Exception as exc:
+        logger.warning("Could not open fetched Wikipedia image: %s", exc)
+        return None
+
+    # pithumbsize is a hint, not a hard cap (real-world photos have come back well over
+    # 1MB) -- resize ourselves so inline email attachments stay small regardless.
+    if max(img.size) > 640:
+        img.thumbnail((640, 640))
+
+    caption_height = 22
+    canvas = Image.new("RGB", (img.width, img.height + caption_height), "white")
+    canvas.paste(img, (0, 0))
+    draw = ImageDraw.Draw(canvas)
+    draw.text((6, img.height + 4), f"Image: Wikipedia — {title}", fill=(100, 100, 100))
+
+    buf = io.BytesIO()
+    canvas.save(buf, format="JPEG", quality=85)
+    buf.seek(0)
+    return buf.read()
+
+
+def fetch_wikipedia_image(query, label=None):
+    """Pulls a real-world photo/infographic for a story's anchor entity (a company, commodity,
+    place, or institution) straight from Wikipedia -- free, no API key. Returns None (caller
+    skips the visual) if no matching article or no usable image exists; never forces a weak or
+    generic match."""
+    if not query:
+        return None
+
+    try:
+        search_qs = urllib.parse.urlencode(
+            {"action": "query", "list": "search", "srsearch": query, "format": "json", "srlimit": 1}
+        )
+        req = urllib.request.Request(f"{WIKI_API_URL}?{search_qs}", headers={"User-Agent": WIKI_USER_AGENT})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            search_data = json.loads(resp.read())
+        results = (search_data.get("query") or {}).get("search") or []
+        if not results:
+            logger.info("No Wikipedia article found for query %r", query)
+            return None
+        title = results[0]["title"]
+
+        image_qs = urllib.parse.urlencode(
+            {"action": "query", "titles": title, "prop": "pageimages", "format": "json", "pithumbsize": 640}
+        )
+        req = urllib.request.Request(f"{WIKI_API_URL}?{image_qs}", headers={"User-Agent": WIKI_USER_AGENT})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            image_data = json.loads(resp.read())
+        pages = (image_data.get("query") or {}).get("pages") or {}
+        thumbnail = next(iter(pages.values()), {}).get("thumbnail") or {}
+        image_url = thumbnail.get("source")
+        if not image_url:
+            logger.info("No image available on Wikipedia page %r", title)
+            return None
+
+        img_req = urllib.request.Request(image_url, headers={"User-Agent": WIKI_USER_AGENT})
+        with urllib.request.urlopen(img_req, timeout=8) as resp:
+            image_bytes = resp.read()
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, KeyError, TimeoutError) as exc:
+        logger.warning("Wikipedia image fetch failed for query %r: %s", query, exc)
+        return None
+
+    return _caption_image(image_bytes, title)
 
 
 def generate_price_chart(ticker, label=None):
@@ -293,6 +526,14 @@ def resolve_visual(result, label=None):
         return generate_trend_chart(result.get("trend_chart"))
     if visual_type == "flowchart":
         return generate_flowchart(result.get("flowchart"))
+    if visual_type == "candlestick_chart":
+        return generate_candlestick_chart(result.get("ticker"), label=label)
+    if visual_type == "renko_chart":
+        return generate_renko_chart(result.get("ticker"), label=label)
+    if visual_type == "pnf_chart":
+        return generate_pnf_chart(result.get("ticker"), label=label)
+    if visual_type == "real_world_image":
+        return fetch_wikipedia_image(result.get("image_query"), label=label)
     return None
 
 

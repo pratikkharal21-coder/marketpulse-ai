@@ -9,8 +9,7 @@ precise external scheduler. Total running cost: **$0/month**.
 ## Architecture at a glance
 
 ```
-cron-job.org (3x/day, Europe/London tz)
-        │ HTTPS POST → GitHub Actions workflow_dispatch
+GitHub Actions schedule: trigger (3x/day, fixed UTC cron — see "Production schedule")
         ▼
 GitHub Actions (ubuntu-latest, free tier)
         │
@@ -41,12 +40,11 @@ decisions worth knowing about before reviewing the code:
   This was an explicit constraint, not an oversight — it shows up as rate-limit handling
   (`triage.py` batches into groups of 12 to stay under Groq's free-tier TPM cap) and as the
   retry/backoff already built into the `groq` SDK.
-- **GitHub's own `schedule:` cron trigger was removed.** It was observed firing 1–3 hours late
-  (a documented "best-effort" limitation of GitHub's shared runner queue). Timing is now driven
-  by **cron-job.org**, an external scheduler that fires to the second and calls the GitHub REST
-  API (`POST /repos/.../actions/workflows/marketpulse.yml/dispatches`) using a fine-grained PAT
-  scoped only to this repo's Actions. The workflow file only declares `workflow_dispatch:` — see
-  `.github/workflows/marketpulse.yml`.
+- **Timing runs on GitHub's own `schedule:` cron, currently.** A precise external scheduler
+  (cron-job.org, calling the GitHub REST API's `dispatches` endpoint with a fine-grained PAT) was
+  planned and documented but never actually set up, so native `schedule:` cron is what's live —
+  see `.github/workflows/marketpulse.yml` and "Production schedule" below for the real, current
+  tradeoffs (1-3hr possible drift, no DST awareness).
 - **State persistence is git-based, not a database.** `state.json` (a flat map of seen-story
   hashes → timestamps, pruned after 7 days) is committed back to the repo by the workflow itself
   after each run. This was chosen over `actions/cache` because cache is explicitly best-effort/
@@ -155,12 +153,19 @@ knobs (model names, thresholds, counts) are documented with defaults in `.env.ex
 
 ## Production schedule
 
-Three cron-job.org jobs, `Europe/London` timezone (auto-adjusts for BST/GMT), each POSTing to the
-GitHub Actions dispatch endpoint:
+The originally-planned cron-job.org setup (see below) was never actually completed, so timing
+is currently driven by GitHub Actions' own `schedule:` trigger in
+`.github/workflows/marketpulse.yml` — fixed UTC cron expressions tuned for `Europe/London`
+during BST, no DST awareness, and GitHub's shared-runner queue can run it 1-3 hours late:
 
-- 07:00 — pre-market recap
-- 14:30 — US market open
-- 21:00 — US market close
+- ~14:00 — midday digest, every day
+- ~18:00 — afternoon digest, every day
+- ~21:00 — close digest, **weekdays only** (no Saturday/Sunday)
+
+Times will drift ~1hr late once GMT/winter starts (late October) unless the cron expressions are
+updated. Revisit `cron-job.org` for precise, DST-aware timing if that's ever worth the ~10 minutes
+of setup — it would replace the `schedule:` block above with `workflow_dispatch`-only timing
+driven externally, POSTing to the GitHub Actions dispatch endpoint at the exact minute.
 
 ## Cost
 

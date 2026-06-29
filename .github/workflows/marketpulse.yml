@@ -8,9 +8,9 @@ on:
   # (cron-job.org) was never actually set up. Revisit README's "Production
   # schedule" section if/when that gets finished — it would replace this.
   schedule:
-    - cron: "0 6 * * *"   # ~07:00 Europe/London (premarket)
-    - cron: "30 13 * * *" # ~14:30 Europe/London (US market open)
-    - cron: "0 20 * * *"  # ~21:00 Europe/London (US market close)
+    - cron: "0 13 * * *"   # ~14:00 Europe/London, every day
+    - cron: "0 17 * * *"   # ~18:00 Europe/London, every day
+    - cron: "0 20 * * 1-5" # ~21:00 Europe/London, weekdays only (no Sat/Sun)
   workflow_dispatch: {}
 
 permissions:

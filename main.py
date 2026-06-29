@@ -21,21 +21,24 @@ logger = logging.getLogger("marketpulse.main")
 LONDON_TZ = ZoneInfo("Europe/London")
 
 # (slot name, London-local hour, London-local minute, framing note for the generator prompts)
+# Schedule: midday and afternoon fire every day; close is weekdays-only (see
+# .github/workflows/marketpulse.yml) -- but framing here is purely about time-of-day, so a
+# manual/off-schedule run on a weekend still gets sensible "close" framing if triggered at 9pm.
 RUN_SLOTS = [
     (
-        "premarket",
-        7,
+        "midday",
+        14,
         0,
-        "This is the pre-market digest. Frame coverage forward-looking: set the agenda for the "
-        "trading day ahead -- what to watch and why it matters today, not a recap of what already "
-        "happened.",
+        "This is the midday digest, ahead of the US market session. Frame coverage "
+        "forward-looking: set the agenda for the session ahead -- what to watch and why it "
+        "matters today, not a recap of what already happened.",
     ),
     (
-        "open",
-        14,
-        30,
-        "This is the US market open digest. Frame coverage reactively: focus on what is moving "
-        "right now, in real time, and why.",
+        "afternoon",
+        18,
+        0,
+        "This is the afternoon digest, mid-way through the US trading session. Frame coverage "
+        "reactively: focus on what is moving right now, in real time, and why.",
     ),
     (
         "close",
@@ -48,7 +51,7 @@ RUN_SLOTS = [
 
 
 def get_run_slot(now=None):
-    """Derive which of the 3 daily slots (premarket/open/close) this run corresponds to,
+    """Derive which of the 3 daily slots (midday/afternoon/close) this run corresponds to,
     based on current London-local time (auto-adjusts for BST/GMT). Workflow_dispatch carries
     no parameters, so this is inferred from the clock rather than passed in by the trigger.
     Falls back to whichever slot is nearest in time-of-day, so manual/off-schedule runs still

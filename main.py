@@ -91,8 +91,9 @@ def run():
         return
 
     used_hooks = []
-    threads = generate.generate_short_threads(survivors, used_hooks, slot_framing)
-    deep_dives = longform.generate_top_longform(survivors, used_hooks, slot_framing)
+    used_visuals = []
+    threads = generate.generate_short_threads(survivors, used_hooks, slot_framing, used_visuals)
+    deep_dives = longform.generate_top_longform(survivors, used_hooks, slot_framing, used_visuals)
 
     report_html, inline_images = report.render(threads, len(survivors), deep_dives)
     subject = f"MarketPulse AI — {len(threads)} threads"

@@ -151,7 +151,7 @@ def generate_candlestick_chart(ticker, label=None):
     try:
         fig, axlist = mpf.plot(
             data, type="candle", style=_technical_style(), returnfig=True,
-            figsize=(6, 3.8), title=title, tight_layout=True,
+            figsize=(7, 4.8), title=title, tight_layout=True,
         )
     except Exception as exc:
         logger.warning("Candlestick chart failed for %s: %s", ticker, exc)
@@ -190,7 +190,7 @@ def generate_renko_chart(ticker, label=None):
     try:
         fig, axlist = mpf.plot(
             data, type="renko", style=_technical_style(), returnfig=True,
-            figsize=(6, 3.8), title=title, tight_layout=True,
+            figsize=(7, 4.8), title=title, tight_layout=True,
         )
     except Exception as exc:
         logger.warning("Renko chart failed for %s: %s", ticker, exc)
@@ -212,7 +212,7 @@ def generate_pnf_chart(ticker, label=None):
     try:
         fig, axlist = mpf.plot(
             data, type="pnf", style=_technical_style(), returnfig=True,
-            figsize=(6, 3.8), title=title, tight_layout=True,
+            figsize=(7, 4.8), title=title, tight_layout=True,
         )
     except Exception as exc:
         logger.warning("Point & Figure chart failed for %s: %s", ticker, exc)
@@ -352,7 +352,12 @@ def generate_bar_chart(spec):
     colors = [(GREEN if v >= 0 else RED) for v in values] if is_delta else [BLUE] * len(values)
     fmt = "{:+.2f}{}" if is_delta else "{:.2f}{}"
 
-    fig, ax = plt.subplots(figsize=(6, 3.5), dpi=140)
+    # Rotate labels when there are many bars or labels are long, to prevent overlap
+    max_label_len = max(len(str(l)) for l in labels) if labels else 0
+    rotate = max_label_len > 7 or len(labels) > 4
+    fig_height = 4.2 if rotate else 3.5
+
+    fig, ax = plt.subplots(figsize=(6, fig_height), dpi=140)
     bars = ax.bar(labels, values, color=colors, width=0.6)
 
     ax.set_title(_wrap_title(title, width=42), fontsize=14, fontweight="bold", loc="left", color="#1a1a1a")
@@ -370,6 +375,8 @@ def generate_bar_chart(spec):
         ax.spines[spine].set_visible(False)
     ax.tick_params(axis="x", labelsize=9, colors="#444444")
     ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    if rotate:
+        plt.setp(ax.get_xticklabels(), rotation=35, ha="right")
     fig.patch.set_facecolor("white")
 
     fig.tight_layout()
@@ -505,6 +512,8 @@ def generate_trend_chart(spec):
         ax.spines[spine].set_visible(False)
     ax.tick_params(axis="x", labelsize=8, colors="#666666")
     ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    if len(labels) > 5:
+        plt.setp(ax.get_xticklabels(), rotation=35, ha="right")
     fig.patch.set_facecolor("white")
 
     fig.tight_layout()

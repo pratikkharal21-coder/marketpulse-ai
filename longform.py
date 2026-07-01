@@ -76,13 +76,21 @@ Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 )
 
 
-def generate_longform(story, used_hooks=None, slot_framing=None):
+def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=None):
     used_hooks = used_hooks if used_hooks is not None else []
+    used_visuals = used_visuals if used_visuals is not None else []
     hook_note = (
         f"\n\nHook shapes already used so far in this batch: {used_hooks}. Avoid reusing any "
         f"shape that already appears twice in that list; prefer an unused shape if the story "
         f"allows it."
         if used_hooks
+        else ""
+    )
+    visual_note = (
+        f"\n\nVisual types already used in this batch: {used_visuals}. "
+        f"For variety, strongly prefer a visual type NOT in this list if the story reasonably supports it. "
+        f"Only repeat a type if it is genuinely the only fit for this specific story."
+        if used_visuals
         else ""
     )
     slot_note = f"\n\nRun context: {slot_framing}" if slot_framing else ""
@@ -95,6 +103,7 @@ def generate_longform(story, used_hooks=None, slot_framing=None):
         f"Triage notes: relevance={story.get('relevance')}, impact={story.get('impact')}, "
         f"reason={story.get('triage_reason')}"
         f"{hook_note}"
+        f"{visual_note}"
         f"{slot_note}"
     )
 
@@ -120,6 +129,7 @@ def generate_longform(story, used_hooks=None, slot_framing=None):
         return {
             "thread": thread,
             "hook_shape": result.get("hook_shape"),
+            "visual_type": result.get("visual_type") or "none",
             "chart_image": chart_image,
             "seed_replies": seed_replies,
             "quote_angle": result.get("quote_angle") or None,
@@ -136,15 +146,20 @@ def generate_longform(story, used_hooks=None, slot_framing=None):
         return None
 
 
-def generate_top_longform(stories, used_hooks=None, slot_framing=None):
+def generate_top_longform(stories, used_hooks=None, slot_framing=None, used_visuals=None):
     if used_hooks is None:
         used_hooks = []
+    if used_visuals is None:
+        used_visuals = []
     items = []
     for story in stories[: config.MAX_LONGFORM_STORIES]:
-        longform = generate_longform(story, used_hooks, slot_framing)
+        longform = generate_longform(story, used_hooks, slot_framing, used_visuals)
         if longform:
             items.append(longform)
             if longform.get("hook_shape"):
                 used_hooks.append(longform["hook_shape"])
+            vt = longform.get("visual_type")
+            if vt and vt != "none":
+                used_visuals.append(vt)
     logger.info("Generated %d deep-dive thread(s) from %d candidate stories", len(items), len(stories))
     return items

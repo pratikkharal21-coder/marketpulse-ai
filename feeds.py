@@ -17,6 +17,8 @@ FEEDS = {
         "https://seekingalpha.com/market_currents.xml",
         "https://www.benzinga.com/feed",
         "https://feeds.feedburner.com/zerohedge/feed",
+        "https://www.ft.com/rss/markets",
+        "https://spotgamma.com/feed/",
     ],
     "macro": [
         "https://www.cnbc.com/id/20910258/device/rss/rss.html",
@@ -26,6 +28,10 @@ FEEDS = {
         "https://www.ecb.europa.eu/rss/press.html",
         "http://rss.cnn.com/rss/money_news_economy.rss",
         "https://feeds.a.dj.com/rss/RSSWorldNews.xml",
+        "https://www.bankofengland.co.uk/rss/publications",
+        "https://apps.bea.gov/rss/rss.xml",
+        "https://www.ons.gov.uk/releasecalendar?rss",
+        "https://www.treasurydirect.gov/TA_WS/securities/announced/rss",
     ],
     "fx": [
         "https://www.investing.com/rss/forex.rss",
@@ -33,6 +39,8 @@ FEEDS = {
     "commodities": [
         "https://oilprice.com/rss/main",
         "https://www.investing.com/rss/commodities.rss",
+        "https://www.eia.gov/rss/todayinenergy.xml",
+        "https://www.freightos.com/feed/",
     ],
     "crypto": [
         "https://www.coindesk.com/arc/outboundfeeds/rss/",

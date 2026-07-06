@@ -46,12 +46,30 @@ use to quote-post this thread later — a different angle than the thread itself
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 {"thread": ["1/4 ...", "2/4 ...", ...], \
 "hook_shape": "number_led"|"contrarian"|"stakes"|"question"|"surprising_fact", \
-"visual_type": "price_chart"|"candlestick_chart"|"renko_chart"|"pnf_chart"|"bar_chart"|"histogram"|"pie_chart"|"trend_chart"|"flowchart"|"real_world_image"|"none", \
-"ticker": "AAPL" or null, \
-"bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
-"histogram": {"title": "...", "values": [...], "unit": "..."} or null, \
+"visual_type": "price_chart"|"candlestick_chart"|"renko_chart"|"pnf_chart"|"ohlc_chart"|"heikin_ashi_chart"|"kagi_chart"|"area_chart"|"volume_chart"|"volume_profile_chart"|"yield_curve_chart"|"seasonality_chart"|"bar_chart"|"dumbbell_chart"|"grouped_bar_chart"|"stacked_bar_chart"|"waterfall_chart"|"slope_chart"|"bullet_chart"|"pie_chart"|"donut_chart"|"treemap_chart"|"histogram"|"box_plot"|"violin_plot"|"scatter_chart"|"bubble_chart"|"correlation_matrix_chart"|"regression_chart"|"trend_chart"|"term_structure_chart"|"spread_chart"|"zscore_chart"|"cumulative_flow_chart"|"flowchart"|"real_world_image"|"none", \
+"ticker": "AAPL" or null (used by price_chart, candlestick_chart, renko_chart, pnf_chart, ohlc_chart, heikin_ashi_chart, kagi_chart, area_chart, volume_chart, volume_profile_chart, seasonality_chart), \
+"bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "...", "orientation": "vertical"|"horizontal"} or null, \
+"dumbbell_chart": {"title": "...", "labels": [...], "start_values": [...], "end_values": [...], "start_label": "...", "end_label": "...", "unit": "..."} or null, \
+"grouped_bar_chart": {"title": "...", "labels": [...], "series": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
+"stacked_bar_chart": {"title": "...", "labels": [...], "series": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
+"waterfall_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
+"slope_chart": {"title": "...", "labels": [...], "start_values": [...], "end_values": [...], "start_label": "...", "end_label": "...", "unit": "..."} or null, \
+"bullet_chart": {"title": "...", "value": 0, "target": 0, "ranges": [0, 0, 0], "unit": "..."} or null, \
 "pie_chart": {"title": "...", "labels": [...], "values": [...]} or null, \
+"donut_chart": {"title": "...", "labels": [...], "values": [...]} or null, \
+"treemap_chart": {"title": "...", "labels": [...], "values": [...]} or null, \
+"histogram": {"title": "...", "values": [...], "unit": "..."} or null, \
+"box_plot": {"title": "...", "groups": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
+"violin_plot": {"title": "...", "groups": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
+"scatter_chart": {"title": "...", "x_label": "...", "y_label": "...", "x_values": [...], "y_values": [...]} or null, \
+"bubble_chart": {"title": "...", "x_label": "...", "y_label": "...", "x_values": [...], "y_values": [...], "sizes": [...], "labels": [...]} or null, \
+"correlation_matrix_chart": {"title": "...", "labels": [...], "matrix": [[...], ...]} or null, \
+"regression_chart": {"title": "...", "x_label": "...", "y_label": "...", "x_values": [...], "y_values": [...]} or null, \
 "trend_chart": {"title": "...", "labels": [...], "values": [...], "fit": "linear"|"cubic", "unit": "..."} or null, \
+"term_structure_chart": {"title": "...", "labels": [...], "values": [...], "compare_values": [...], "compare_label": "...", "unit": "..."} or null, \
+"spread_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
+"zscore_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
+"cumulative_flow_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
 "flowchart": {"steps": [...]} or null, \
 "image_query": "..." or null, \
 "seed_replies": ["...", "..."], "quote_angle": "...", \

@@ -10,6 +10,7 @@ import mailer
 import report
 import state
 import triage
+import verify
 
 logging.basicConfig(
     level=logging.INFO,
@@ -94,6 +95,9 @@ def run():
     used_visuals = []
     threads = generate.generate_short_threads(survivors, used_hooks, slot_framing, used_visuals)
     deep_dives = longform.generate_top_longform(survivors, used_hooks, slot_framing, used_visuals)
+
+    verify.log_provenance(threads)
+    verify.log_provenance(deep_dives)
 
     report_html, inline_images = report.render(threads, len(survivors), deep_dives)
     subject = f"MarketPulse AI — {len(threads)} threads"

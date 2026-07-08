@@ -30,3 +30,4 @@ REGEN_THRESHOLD = int(os.environ.get("REGEN_THRESHOLD", "6"))
 BASE_DIR = Path(__file__).parent
 STATE_PATH = BASE_DIR / "state.json"
 LOG_PATH = BASE_DIR / "marketpulse.log"
+PROVENANCE_LOG_PATH = BASE_DIR / "provenance_log.jsonl"

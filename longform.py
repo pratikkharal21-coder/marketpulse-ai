@@ -1,6 +1,7 @@
 import logging
 
 import config
+import verify
 from ai_client import call_for_json
 from chart import resolve_visual
 from persona import ENGAGEMENT_GUIDELINES, HOOK_SHAPE_TAXONOMY, PERSONA, VALUE_GUIDELINES, VISUAL_GUIDELINES
@@ -137,7 +138,28 @@ def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=No
         if not thread:
             return None
 
-        chart_image = resolve_visual(result, label=story["title"])
+        # Grounding text must match exactly what the model was shown -- not the full (possibly
+        # longer) feed summary -- otherwise a "grounded" number could really just be a number
+        # that happens to appear later in the raw feed text the model never saw.
+        grounding_story = {**story, "summary": story["summary"][:600]}
+
+        ok, reason = verify.check_causal_claims(thread, grounding_story)
+        if not ok:
+            logger.warning("Blocked story '%s': %s", story["title"], reason)
+            return None
+
+        result, spec_warning = verify.ground_visual_spec(result, grounding_story)
+
+        chart_stats = {}
+        chart_image = resolve_visual(result, label=story["title"], stats_out=chart_stats)
+
+        ok, reason = verify.verify_ticker_direction(thread, chart_stats)
+        if not ok:
+            logger.warning("Blocked story '%s': %s", story["title"], reason)
+            return None
+
+        advisory_warnings = verify.check_bare_numbers(thread) + verify.check_verb_intensity(thread, chart_stats)
+        provenance = verify.build_provenance(story, chart_stats, spec_warning, advisory_warnings)
 
         seed_replies = result.get("seed_replies") or []
         if not isinstance(seed_replies, list):
@@ -158,6 +180,7 @@ def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=No
             "story_title": story["title"],
             "story_link": story["link"],
             "story_source": story["source"],
+            "provenance": provenance,
         }
     except Exception as exc:
         logger.error("Long-form generation failed for story '%s': %s", story["title"], exc)

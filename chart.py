@@ -5,6 +5,7 @@ import textwrap
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 
 import matplotlib
 
@@ -33,8 +34,22 @@ BOX_FILL = "#eff6ff"
 GRID_COLOR = "#e5e7eb"
 PIE_PALETTE = [BLUE, GREEN, AMBER, RED, PURPLE, TEAL, GRAY]
 
+WATERMARK_HANDLE = "@MarketPulseHQx"
+
+
+def _utcnow_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _add_watermark(fig):
+    fig.text(
+        0.995, 0.005, WATERMARK_HANDLE,
+        ha="right", va="bottom", fontsize=8, style="italic", color="#999999", alpha=0.85,
+    )
+
 
 def _save_fig(fig):
+    _add_watermark(fig)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", facecolor="white", bbox_inches="tight")
     plt.close(fig)
@@ -132,7 +147,28 @@ def _technical_style():
     return mpf.make_mpf_style(marketcolors=mc, gridcolor=GRID_COLOR, facecolor="white", figcolor="white")
 
 
-def generate_candlestick_chart(ticker, label=None):
+def _ticker_stats(ticker, data, extra=None):
+    """Real, fetched-not-invented numbers backing a ticker-driven chart -- captured so the
+    caller can cross-check the generated thread's text against what the data actually shows
+    (see verify.verify_ticker_direction) and retain a traceable provenance record."""
+    first = float(data["Close"].iloc[0])
+    last = float(data["Close"].iloc[-1])
+    stats = {
+        "source": "yfinance",
+        "ticker": ticker,
+        "first_close": first,
+        "last_close": last,
+        "pct_change": (last - first) / first * 100 if first else None,
+        "period_start": str(data.index[0]),
+        "period_end": str(data.index[-1]),
+        "fetched_at": _utcnow_iso(),
+    }
+    if extra:
+        stats.update(extra)
+    return stats
+
+
+def generate_candlestick_chart(ticker, label=None, stats_out=None):
     if not ticker:
         return None
 
@@ -159,7 +195,8 @@ def generate_candlestick_chart(ticker, label=None):
 
     ax = axlist[0]
     span = float(data["High"].max() - data["Low"].min()) or 1.0
-    for i, name, direction in detect_candlestick_patterns(data, lookback=5):
+    patterns = detect_candlestick_patterns(data, lookback=5)
+    for i, name, direction in patterns:
         color = GREEN if direction == "bullish" else RED if direction == "bearish" else GRAY
         y = float(data["High"].iloc[i])
         ax.annotate(
@@ -173,10 +210,12 @@ def generate_candlestick_chart(ticker, label=None):
             arrowprops=dict(arrowstyle="-|>", color=color, lw=1.2),
         )
 
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data, {"patterns": [p[1] for p in patterns]}))
     return _save_fig(fig)
 
 
-def generate_renko_chart(ticker, label=None):
+def generate_renko_chart(ticker, label=None, stats_out=None):
     if not ticker:
         return None
 
@@ -195,10 +234,12 @@ def generate_renko_chart(ticker, label=None):
     except Exception as exc:
         logger.warning("Renko chart failed for %s: %s", ticker, exc)
         return None
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data))
     return _save_fig(fig)
 
 
-def generate_pnf_chart(ticker, label=None):
+def generate_pnf_chart(ticker, label=None, stats_out=None):
     if not ticker:
         return None
 
@@ -217,10 +258,12 @@ def generate_pnf_chart(ticker, label=None):
     except Exception as exc:
         logger.warning("Point & Figure chart failed for %s: %s", ticker, exc)
         return None
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data))
     return _save_fig(fig)
 
 
-def generate_ohlc_chart(ticker, label=None):
+def generate_ohlc_chart(ticker, label=None, stats_out=None):
     if not ticker:
         return None
 
@@ -239,6 +282,8 @@ def generate_ohlc_chart(ticker, label=None):
     except Exception as exc:
         logger.warning("OHLC chart failed for %s: %s", ticker, exc)
         return None
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data))
     return _save_fig(fig)
 
 
@@ -257,7 +302,7 @@ def _to_heikin_ashi(data):
     return ha
 
 
-def generate_heikin_ashi_chart(ticker, label=None):
+def generate_heikin_ashi_chart(ticker, label=None, stats_out=None):
     if not ticker:
         return None
 
@@ -277,6 +322,8 @@ def generate_heikin_ashi_chart(ticker, label=None):
     except Exception as exc:
         logger.warning("Heikin-Ashi chart failed for %s: %s", ticker, exc)
         return None
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data))
     return _save_fig(fig)
 
 
@@ -311,7 +358,7 @@ def _kagi_vertices(closes, reversal_pct=4.0):
     return verts
 
 
-def generate_kagi_chart(ticker, label=None, reversal_pct=4.0):
+def generate_kagi_chart(ticker, label=None, reversal_pct=4.0, stats_out=None):
     if not ticker:
         return None
 
@@ -350,10 +397,12 @@ def generate_kagi_chart(ticker, label=None, reversal_pct=4.0):
     fig.patch.set_facecolor("white")
 
     fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data, {"reversal_pct": reversal_pct}))
     return _save_fig(fig)
 
 
-def generate_area_chart(ticker, label=None):
+def generate_area_chart(ticker, label=None, stats_out=None):
     if not ticker:
         return None
 
@@ -393,10 +442,12 @@ def generate_area_chart(ticker, label=None):
     fig.patch.set_facecolor("white")
 
     fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data))
     return _save_fig(fig)
 
 
-def generate_volume_chart(ticker, label=None):
+def generate_volume_chart(ticker, label=None, stats_out=None):
     if not ticker:
         return None
 
@@ -428,10 +479,12 @@ def generate_volume_chart(ticker, label=None):
     fig.patch.set_facecolor("white")
 
     fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data, {"total_volume": float(data["Volume"].sum())}))
     return _save_fig(fig)
 
 
-def generate_volume_profile_chart(ticker, label=None, bins=20):
+def generate_volume_profile_chart(ticker, label=None, bins=20, stats_out=None):
     if not ticker:
         return None
 
@@ -475,13 +528,15 @@ def generate_volume_profile_chart(ticker, label=None, bins=20):
     fig.patch.set_facecolor("white")
 
     fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data, {"point_of_control": float(centers[poc])}))
     return _save_fig(fig)
 
 
 YIELD_CURVE_TENORS = [("3M", "^IRX"), ("5Y", "^FVX"), ("10Y", "^TNX"), ("30Y", "^TYX")]
 
 
-def generate_yield_curve_chart(label=None):
+def generate_yield_curve_chart(label=None, stats_out=None):
     current, prior = [], []
     for name, sym in YIELD_CURVE_TENORS:
         try:
@@ -517,10 +572,17 @@ def generate_yield_curve_chart(label=None):
     fig.patch.set_facecolor("white")
 
     fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update({
+            "source": "yfinance",
+            "tenors": dict(zip(labels, current)),
+            "tenors_prior": dict(zip(labels, prior)),
+            "fetched_at": _utcnow_iso(),
+        })
     return _save_fig(fig)
 
 
-def generate_seasonality_chart(ticker, label=None, years=5):
+def generate_seasonality_chart(ticker, label=None, years=5, stats_out=None):
     if not ticker:
         return None
 
@@ -576,6 +638,14 @@ def generate_seasonality_chart(ticker, label=None, years=5):
     fig.patch.set_facecolor("white")
 
     fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update({
+            "source": "yfinance",
+            "ticker": ticker,
+            "years_covered": plotted,
+            "pct_change": float(cum_return[-1]) if is_current else None,
+            "fetched_at": _utcnow_iso(),
+        })
     return _save_fig(fig)
 
 
@@ -596,6 +666,9 @@ def _caption_image(image_bytes, title):
     canvas.paste(img, (0, 0))
     draw = ImageDraw.Draw(canvas)
     draw.text((6, img.height + 4), f"Image: Wikipedia — {title}", fill=(100, 100, 100))
+    handle_bbox = draw.textbbox((0, 0), WATERMARK_HANDLE)
+    handle_width = handle_bbox[2] - handle_bbox[0]
+    draw.text((canvas.width - handle_width - 6, img.height + 4), WATERMARK_HANDLE, fill=(150, 150, 150))
 
     buf = io.BytesIO()
     canvas.save(buf, format="JPEG", quality=85)
@@ -603,7 +676,7 @@ def _caption_image(image_bytes, title):
     return buf.read()
 
 
-def fetch_wikipedia_image(query, label=None):
+def fetch_wikipedia_image(query, label=None, stats_out=None):
     """Pulls a real-world photo/infographic for a story's anchor entity (a company, commodity,
     place, or institution) straight from Wikipedia -- free, no API key. Returns None (caller
     skips the visual) if no matching article or no usable image exists; never forces a weak or
@@ -644,10 +717,17 @@ def fetch_wikipedia_image(query, label=None):
         logger.warning("Wikipedia image fetch failed for query %r: %s", query, exc)
         return None
 
+    if stats_out is not None:
+        stats_out.update({
+            "source": "wikipedia",
+            "wikipedia_title": title,
+            "image_url": image_url,
+            "fetched_at": _utcnow_iso(),
+        })
     return _caption_image(image_bytes, title)
 
 
-def generate_price_chart(ticker, label=None):
+def generate_price_chart(ticker, label=None, stats_out=None):
     if not ticker:
         return None
 
@@ -685,6 +765,17 @@ def generate_price_chart(ticker, label=None):
     fig.patch.set_facecolor("white")
 
     fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update({
+            "source": "yfinance",
+            "ticker": ticker,
+            "first_close": first_price,
+            "last_close": last_price,
+            "pct_change": pct_change,
+            "period_start": str(data.index[0]),
+            "period_end": str(data.index[-1]),
+            "fetched_at": _utcnow_iso(),
+        })
     return _save_fig(fig)
 
 
@@ -1785,11 +1876,17 @@ def generate_cumulative_flow_chart(spec):
     return _save_fig(fig)
 
 
-def resolve_visual(result, label=None):
-    """Dispatch to the right chart renderer based on result['visual_type']."""
+def resolve_visual(result, label=None, stats_out=None):
+    """Dispatch to the right chart renderer based on result['visual_type']. `stats_out`, if
+    given, is filled in-place with the real fetched data backing a ticker-driven visual (or
+    the Wikipedia source for real_world_image) -- callers use this to cross-check the
+    generated thread's claims against what was actually fetched, and to keep a provenance
+    trail. Spec-driven visual types (bar_chart, pie_chart, etc.) have no live fetch of their
+    own, so stats_out is left untouched for those -- their numbers are grounded separately,
+    against the story's own source text, before this function is ever called."""
     visual_type = result.get("visual_type") or "none"
     if visual_type == "price_chart":
-        return generate_price_chart(result.get("ticker"), label=label)
+        return generate_price_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "bar_chart":
         return generate_bar_chart(result.get("bar_chart"))
     if visual_type == "histogram":
@@ -1801,29 +1898,29 @@ def resolve_visual(result, label=None):
     if visual_type == "flowchart":
         return generate_flowchart(result.get("flowchart"))
     if visual_type == "candlestick_chart":
-        return generate_candlestick_chart(result.get("ticker"), label=label)
+        return generate_candlestick_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "renko_chart":
-        return generate_renko_chart(result.get("ticker"), label=label)
+        return generate_renko_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "pnf_chart":
-        return generate_pnf_chart(result.get("ticker"), label=label)
+        return generate_pnf_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "real_world_image":
-        return fetch_wikipedia_image(result.get("image_query"), label=label)
+        return fetch_wikipedia_image(result.get("image_query"), label=label, stats_out=stats_out)
     if visual_type == "ohlc_chart":
-        return generate_ohlc_chart(result.get("ticker"), label=label)
+        return generate_ohlc_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "heikin_ashi_chart":
-        return generate_heikin_ashi_chart(result.get("ticker"), label=label)
+        return generate_heikin_ashi_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "kagi_chart":
-        return generate_kagi_chart(result.get("ticker"), label=label)
+        return generate_kagi_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "area_chart":
-        return generate_area_chart(result.get("ticker"), label=label)
+        return generate_area_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "volume_chart":
-        return generate_volume_chart(result.get("ticker"), label=label)
+        return generate_volume_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "volume_profile_chart":
-        return generate_volume_profile_chart(result.get("ticker"), label=label)
+        return generate_volume_profile_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "yield_curve_chart":
-        return generate_yield_curve_chart(label=label)
+        return generate_yield_curve_chart(label=label, stats_out=stats_out)
     if visual_type == "seasonality_chart":
-        return generate_seasonality_chart(result.get("ticker"), label=label)
+        return generate_seasonality_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "dumbbell_chart":
         return generate_dumbbell_chart(result.get("dumbbell_chart"))
     if visual_type == "grouped_bar_chart":

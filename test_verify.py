@@ -3,6 +3,7 @@ requirement in chart.py. Uses stdlib unittest only -- no new test dependency, no
 calls (chart tests below use spec-driven renderers, which never hit yfinance/Wikipedia)."""
 
 import unittest
+from unittest.mock import patch
 
 import chart
 import verify
@@ -44,6 +45,142 @@ class GroundVisualSpecTests(unittest.TestCase):
         new_result, warning = verify.ground_visual_spec(result, story)
         self.assertIsNone(warning)
         self.assertEqual(new_result, {"visual_type": "none"})
+
+
+class TitleAndPeriodGroundingTests(unittest.TestCase):
+    def test_wrong_subject_title_suppresses_the_visual(self):
+        # Numbers here ARE grounded (both appear in the story) but the chart's own title
+        # names a completely different company -- this is the exact "Momenta" failure mode.
+        story = {
+            "title": "Nvidia beats Q2 earnings estimates",
+            "summary": "Nvidia reported revenue of 30 versus an estimate of 28.",
+        }
+        result = {
+            "visual_type": "bar_chart",
+            "bar_chart": {"title": "Momenta Q2 Revenue", "labels": ["Actual", "Estimate"], "values": [30, 28], "unit": "$B"},
+        }
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIsNotNone(warning)
+        self.assertEqual(new_result["visual_type"], "none")
+        self.assertIsNone(new_result["bar_chart"])
+
+    def test_matching_subject_title_passes(self):
+        story = {
+            "title": "Nvidia beats Q2 earnings estimates",
+            "summary": "Nvidia reported revenue of 30 versus an estimate of 28.",
+        }
+        result = {
+            "visual_type": "bar_chart",
+            "bar_chart": {"title": "Nvidia Q2 Revenue", "labels": ["Actual", "Estimate"], "values": [30, 28], "unit": "$B"},
+        }
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIsNone(warning)
+        self.assertEqual(new_result["visual_type"], "bar_chart")
+
+    def test_wrong_quarter_suppresses_the_visual(self):
+        story = {
+            "title": "Company X reports Q2 results",
+            "summary": "Company X posted revenue of 50 for the second quarter, versus 45 a year ago.",
+        }
+        result = {
+            "visual_type": "bar_chart",
+            "bar_chart": {"title": "Company X Q1 Revenue", "labels": ["This year", "Last year"], "values": [50, 45], "unit": "$B"},
+        }
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIsNotNone(warning)
+        self.assertEqual(new_result["visual_type"], "none")
+
+    def test_matching_quarter_passes(self):
+        story = {
+            "title": "Company X reports Q2 results",
+            "summary": "Company X posted revenue of 50 for the second quarter, versus 45 a year ago.",
+        }
+        result = {
+            "visual_type": "bar_chart",
+            "bar_chart": {"title": "Company X Q2 Revenue", "labels": ["This year", "Last year"], "values": [50, 45], "unit": "$B"},
+        }
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIsNone(warning)
+        self.assertEqual(new_result["visual_type"], "bar_chart")
+
+
+class FlowchartGroundingTests(unittest.TestCase):
+    def test_unrelated_flowchart_is_suppressed(self):
+        story = {"title": "Fed cuts rates", "summary": "The Federal Reserve lowered its target rate."}
+        result = {"visual_type": "flowchart", "flowchart": {"steps": ["OPEC raises output", "Oil supply increases", "Crude prices fall"]}}
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIsNotNone(warning)
+        self.assertEqual(new_result["visual_type"], "none")
+
+    def test_related_flowchart_passes(self):
+        story = {"title": "Fed cuts rates", "summary": "The Federal Reserve lowered its target interest rate."}
+        result = {"visual_type": "flowchart", "flowchart": {"steps": ["Fed cuts rates", "Borrowing costs fall", "Equities rally"]}}
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIsNone(warning)
+        self.assertEqual(new_result["visual_type"], "flowchart")
+
+
+class TickerSubjectGroundingTests(unittest.TestCase):
+    def test_matching_ticker_passes(self):
+        story = {"title": "Apple unveils new iPhone lineup", "summary": "Apple announced new products today."}
+        with patch("verify._fetch_ticker_name", return_value="Apple Inc."):
+            ok, reason = verify.ground_ticker_subject("AAPL", story)
+        self.assertTrue(ok, reason)
+
+    def test_wrong_ticker_for_story_is_blocked(self):
+        story = {"title": "Apple unveils new iPhone lineup", "summary": "Apple announced new products today."}
+        with patch("verify._fetch_ticker_name", return_value="Tesla, Inc."):
+            ok, reason = verify.ground_ticker_subject("TSLA", story)
+        self.assertFalse(ok)
+        self.assertIn("TSLA", reason)
+
+    def test_literal_symbol_in_story_is_a_fallback_match(self):
+        story = {"title": "Shares of Momenta (MNTA) rally on trial data", "summary": "The biotech's stock jumped."}
+        with patch("verify._fetch_ticker_name", return_value=None):
+            ok, reason = verify.ground_ticker_subject("MNTA", story)
+        self.assertTrue(ok, reason)
+
+    def test_failed_name_lookup_with_no_symbol_match_fails_closed(self):
+        story = {"title": "Apple unveils new iPhone lineup", "summary": "Apple announced new products today."}
+        with patch("verify._fetch_ticker_name", return_value=None):
+            ok, reason = verify.ground_ticker_subject("XYZQ", story)
+        self.assertFalse(ok)
+        self.assertIn("failed", reason)
+
+    def test_no_ticker_is_a_noop(self):
+        ok, reason = verify.ground_ticker_subject(None, {"title": "x", "summary": "y"})
+        self.assertTrue(ok, reason)
+
+
+class ImageQueryGroundingTests(unittest.TestCase):
+    def test_grounded_query_passes(self):
+        story = {"title": "Tesla opens new Gigafactory", "summary": "Tesla's newest plant began production."}
+        ok, reason = verify.ground_image_query("Tesla, Inc.", story)
+        self.assertTrue(ok, reason)
+
+    def test_ungrounded_query_is_blocked(self):
+        story = {"title": "Tesla opens new Gigafactory", "summary": "Tesla's newest plant began production."}
+        ok, reason = verify.ground_image_query("Federal Reserve", story)
+        self.assertFalse(ok)
+
+
+class CheckVisualRelevanceIntegrationTests(unittest.TestCase):
+    def test_wrong_ticker_downgrades_to_none(self):
+        story = {"title": "Apple unveils new iPhone lineup", "summary": "Apple announced new products today."}
+        result = {"visual_type": "price_chart", "ticker": "TSLA"}
+        with patch("verify._fetch_ticker_name", return_value="Tesla, Inc."):
+            new_result, warning = verify.check_visual_relevance(result, story)
+        self.assertEqual(new_result["visual_type"], "none")
+        self.assertIsNone(new_result["ticker"])
+        self.assertIsNotNone(warning)
+
+    def test_correct_ticker_survives(self):
+        story = {"title": "Apple unveils new iPhone lineup", "summary": "Apple announced new products today."}
+        result = {"visual_type": "price_chart", "ticker": "AAPL"}
+        with patch("verify._fetch_ticker_name", return_value="Apple Inc."):
+            new_result, warning = verify.check_visual_relevance(result, story)
+        self.assertEqual(new_result["visual_type"], "price_chart")
+        self.assertIsNone(warning)
 
 
 class CausalClaimTests(unittest.TestCase):

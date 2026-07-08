@@ -131,7 +131,7 @@ def generate_short_thread(story, used_hooks=None, slot_framing=None, used_visual
             logger.warning("Blocked story '%s': %s", story["title"], reason)
             return None
 
-        result, spec_warning = verify.ground_visual_spec(result, grounding_story)
+        result, spec_warning = verify.check_visual_relevance(result, grounding_story)
 
         chart_stats = {}
         chart_image = resolve_visual(result, label=story["title"], stats_out=chart_stats)

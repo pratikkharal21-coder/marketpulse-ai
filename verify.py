@@ -3,6 +3,8 @@ import logging
 import re
 from datetime import datetime, timezone
 
+import yfinance as yf
+
 import config
 
 logger = logging.getLogger("marketpulse.verify")
@@ -64,6 +66,28 @@ _DRAMATIC_VERB_RE = re.compile(
 )
 DRAMATIC_VERB_THRESHOLD_PCT = 2.0
 
+_PERIOD_TOKEN_RE = re.compile(r"\bQ[1-4]\b|\bFY\s?\d{2,4}\b|\b20\d{2}\b", re.IGNORECASE)
+
+_QUARTER_WORDS = {
+    "q1": ("q1", "first quarter", "1st quarter"),
+    "q2": ("q2", "second quarter", "2nd quarter"),
+    "q3": ("q3", "third quarter", "3rd quarter"),
+    "q4": ("q4", "fourth quarter", "4th quarter"),
+}
+
+# Generic finance/chart vocabulary that would trivially "match" between almost any two
+# finance stories -- excluded when checking whether a chart's own title actually names the
+# same subject as the story, so a title can't pass on a word like "revenue" alone while
+# naming the wrong company entirely.
+_GENERIC_CHART_VOCAB = frozenset("""
+    revenue earnings growth market markets sector trend trends comparison overview
+    performance outlook results result chart summary breakdown analysis quarter quarterly
+    year yearly price prices rate rates target targets estimate estimates actual before
+    after change changes mix share shares total net income sales guidance forecast data
+    value values current prior previous period metric metrics figures numbers company
+    companies stock stocks profit profits loss losses margin margins vs versus overview
+""".split())
+
 
 def _tokenize(text):
     words = re.findall(r"[a-zA-Z][a-zA-Z\-']{2,}", (text or "").lower())
@@ -104,14 +128,50 @@ def _is_grounded(value, text_numbers, rel_tol=0.02, abs_tol=0.05):
     return False
 
 
+def _collect_spec_strings(obj):
+    """Recursively pulls every string leaf out of a chart spec (titles, labels, names)."""
+    strs = []
+    if isinstance(obj, str):
+        strs.append(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            strs.extend(_collect_spec_strings(v))
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            strs.extend(_collect_spec_strings(v))
+    return strs
+
+
+def _period_grounded(token, story_text_lower):
+    t = token.lower().strip()
+    if t in _QUARTER_WORDS:
+        return any(v in story_text_lower for v in _QUARTER_WORDS[t])
+    return t in story_text_lower
+
+
+def _suppress(result, story, warning, field=None):
+    logger.info("Story '%s': %s", story.get("title", "?"), warning)
+    if field:
+        result[field] = None
+    result["visual_type"] = "none"
+    return result, warning
+
+
 def ground_visual_spec(result, story):
-    """For any spec-driven visual_type (one where the model invents the chart's own numbers,
-    as opposed to a ticker-driven type where chart.py fetches real data), require every
-    number in the spec to be traceable back to the story's own title/summary text -- the
-    only free, already-coded source of ground truth for an arbitrary story's specific facts.
-    If any number can't be traced, the visual is blocked (downgraded to "none") rather than
-    published with invented data. Returns (result, warning_or_None); result may be mutated."""
+    """For any spec-driven visual_type (one where the model invents the chart's own content,
+    as opposed to a ticker-driven type where chart.py fetches real data), require:
+      1. every number in the spec to trace back to the story's own title/summary text,
+      2. the chart's own title to be about the same subject as the story (catches a chart
+         titled for a different company/entity entirely), and
+      3. any quarter/year mentioned in the spec to be a period the story actually discusses
+         (catches e.g. a Q1 chart attached to a Q2 story).
+    The story's title/summary text is the only free, already-coded source of ground truth for
+    an arbitrary story's specific facts. Any violation blocks the visual (downgraded to
+    "none") rather than publishing it with invented or mismatched content. Returns
+    (result, warning_or_None); result may be mutated."""
     visual_type = result.get("visual_type") or "none"
+    if visual_type == "flowchart":
+        return _ground_flowchart(result, story)
     if visual_type not in SPEC_DRIVEN_FIELDS:
         return result, None
 
@@ -119,24 +179,134 @@ def ground_visual_spec(result, story):
     if not spec:
         return result, None
 
+    story_text = f"{story.get('title', '')} {story.get('summary', '')}"
+    story_tokens = _tokenize(story_text)
+    story_text_lower = story_text.lower()
+
     spec_numbers = _collect_spec_numbers(spec)
-    if not spec_numbers:
-        return result, None
-
-    text_numbers = _extract_text_numbers(f"{story.get('title', '')} {story.get('summary', '')}")
-    ungrounded = [n for n in spec_numbers if not _is_grounded(n, text_numbers)]
-
-    if ungrounded:
-        warning = (
-            f"visual '{visual_type}' suppressed: {len(ungrounded)}/{len(spec_numbers)} chart "
-            f"value(s) not traceable to the story's own text (e.g. {ungrounded[:3]})"
+    text_numbers = _extract_text_numbers(story_text)
+    ungrounded_numbers = [n for n in spec_numbers if not _is_grounded(n, text_numbers)]
+    if ungrounded_numbers:
+        return _suppress(
+            result, story,
+            f"visual '{visual_type}' suppressed: {len(ungrounded_numbers)}/{len(spec_numbers)} chart "
+            f"value(s) not traceable to the story's own text (e.g. {ungrounded_numbers[:3]})",
+            field=visual_type,
         )
-        logger.info("Story '%s': %s", story.get("title", "?"), warning)
-        result[visual_type] = None
-        result["visual_type"] = "none"
-        return result, warning
+
+    title = spec.get("title") if isinstance(spec, dict) else None
+    if title:
+        title_tokens = _tokenize(title) - _GENERIC_CHART_VOCAB
+        if title_tokens and not (title_tokens & story_tokens):
+            return _suppress(
+                result, story,
+                f"visual '{visual_type}' suppressed: title '{title}' shares no grounded terms with the story",
+                field=visual_type,
+            )
+
+    for s in _collect_spec_strings(spec):
+        for m in _PERIOD_TOKEN_RE.finditer(s):
+            if not _period_grounded(m.group(0), story_text_lower):
+                return _suppress(
+                    result, story,
+                    f"visual '{visual_type}' suppressed: period '{m.group(0)}' in spec is not "
+                    f"mentioned anywhere in the story",
+                    field=visual_type,
+                )
 
     return result, None
+
+
+def _ground_flowchart(result, story):
+    spec = result.get("flowchart")
+    if not spec or not spec.get("steps"):
+        return result, None
+
+    story_tokens = _tokenize(f"{story.get('title', '')} {story.get('summary', '')}")
+    steps_tokens = _tokenize(" ".join(spec["steps"]))
+    if steps_tokens and not (steps_tokens & story_tokens):
+        return _suppress(
+            result, story,
+            "visual 'flowchart' suppressed: steps share no grounded terms with the story",
+            field="flowchart",
+        )
+    return result, None
+
+
+def _fetch_ticker_name(ticker):
+    try:
+        info = yf.Ticker(ticker).info
+        return info.get("shortName") or info.get("longName") or info.get("displayName")
+    except Exception as exc:
+        logger.warning("Could not fetch company/instrument name for ticker %s: %s", ticker, exc)
+        return None
+
+
+def ground_ticker_subject(ticker, story):
+    """The model supplies a bare ticker symbol for ticker-driven visuals; nothing else
+    validates that this ticker is actually the company/instrument the story is about --
+    chart.py will happily render a real, accurate chart for the WRONG company if the model
+    mixes them up. Resolves the ticker to its real name via yfinance (the same already-coded
+    source used to render the chart itself) and requires that name to share a grounded word
+    with the story's own text. Falls back to a literal-symbol check (e.g. a story that
+    literally writes "Apple (AAPL)") if the name lookup fails or doesn't match on its own.
+    Returns (ok, reason_or_None)."""
+    if not ticker:
+        return True, None
+
+    story_text = f"{story.get('title', '')} {story.get('summary', '')}"
+    story_tokens = _tokenize(story_text)
+
+    name = _fetch_ticker_name(ticker)
+    if name and (_tokenize(name) & story_tokens):
+        return True, None
+
+    bare_symbol = re.sub(r"[\^=].*$", "", ticker).replace("-USD", "").replace("/", "")
+    if bare_symbol and bare_symbol.lower() in story_text.lower():
+        return True, None
+
+    if name is None:
+        return False, f"could not verify ticker '{ticker}' against the story (name lookup failed) -- failing closed"
+    return False, f"ticker '{ticker}' resolves to '{name}', which shares no grounded terms with the story"
+
+
+def ground_image_query(image_query, story):
+    """The model supplies a free-text Wikipedia search query for real_world_image visuals;
+    require it to share a grounded word with the story before spending a network call on it
+    -- an ungrounded query would still return a real photo, just of the wrong subject.
+    Returns (ok, reason_or_None)."""
+    if not image_query:
+        return True, None
+
+    story_tokens = _tokenize(f"{story.get('title', '')} {story.get('summary', '')}")
+    query_tokens = _tokenize(image_query)
+    if not query_tokens or (query_tokens & story_tokens):
+        return True, None
+    return False, f"image query '{image_query}' shares no grounded terms with the story"
+
+
+def check_visual_relevance(result, story):
+    """Single entry point: whatever visual_type the model picked, verify its SUBJECT and
+    CONTENT are grounded in this specific story before it is ever rendered -- ticker-driven,
+    spec-driven, and photo visuals alike, so any future visual type automatically inherits
+    the same rule from this one place. Downgrades to "none" on any mismatch (wrong company,
+    wrong period, invented numbers, unrelated photo) rather than publishing something
+    irrelevant. Returns (result, warning_or_None); result may be mutated."""
+    visual_type = result.get("visual_type") or "none"
+
+    if visual_type in TICKER_DRIVEN_TYPES:
+        ok, reason = ground_ticker_subject(result.get("ticker"), story)
+        if not ok:
+            return _suppress(result, story, reason, field="ticker")
+        return result, None
+
+    if visual_type == "real_world_image":
+        ok, reason = ground_image_query(result.get("image_query"), story)
+        if not ok:
+            return _suppress(result, story, reason, field="image_query")
+        return result, None
+
+    return ground_visual_spec(result, story)
 
 
 def check_causal_claims(thread_lines, story):

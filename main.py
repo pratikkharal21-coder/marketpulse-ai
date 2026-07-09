@@ -92,7 +92,9 @@ def run():
         return
 
     used_hooks = []
-    used_visuals = []
+    # Seeded with the last few posts' visual types across PRIOR runs too, not just this run's
+    # batch, so "don't repeat the same visual type back-to-back" holds across scheduled runs.
+    used_visuals = state.get_recent_visuals(st)
     threads = generate.generate_short_threads(survivors, used_hooks, slot_framing, used_visuals)
     deep_dives = longform.generate_top_longform(survivors, used_hooks, slot_framing, used_visuals)
 
@@ -106,6 +108,7 @@ def run():
     mailer.send(f"{subject} ({_now_str()})", report_html, inline_images)
 
     st = state.mark_sent(st, survivors)
+    st = state.save_recent_visuals(st, used_visuals)
     state.save(st)
 
     logger.info(

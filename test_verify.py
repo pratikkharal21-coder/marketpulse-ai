@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import patch
 
 import chart
+import state
 import verify
 
 
@@ -257,11 +258,243 @@ class ProvenanceTests(unittest.TestCase):
     def test_provenance_shape(self):
         story = {"source": "markets", "link": "http://x.test/1", "published": "2026-01-01T00:00:00+00:00"}
         chart_stats = {"source": "yfinance", "pct_change": 1.0}
-        provenance = verify.build_provenance(story, chart_stats, "some warning", ["bare number"])
+        provenance = verify.build_provenance(story, chart_stats, ["some warning"], ["bare number"])
         self.assertIn("generated_at", provenance)
         self.assertIn("yfinance", provenance["data_sources"])
         self.assertIn("some warning", provenance["warnings"])
         self.assertIn("bare number", provenance["warnings"])
+
+
+class VisualConfidenceTests(unittest.TestCase):
+    def test_low_confidence_suppresses_visual(self):
+        story = {"title": "Fed cuts rates to 4.50% from 4.75%", "summary": "The Fed cut its rate to 4.50% from 4.75%."}
+        result = {
+            "visual_type": "bar_chart", "visual_confidence": 3,
+            "bar_chart": {"title": "Fed funds rate", "labels": ["Before", "After"], "values": [4.75, 4.50], "unit": "%"},
+        }
+        new_result, warning = verify.check_visual_confidence(result, story)
+        self.assertIsNotNone(warning)
+        self.assertEqual(new_result["visual_type"], "none")
+        self.assertIsNone(new_result["bar_chart"])
+
+    def test_high_confidence_passes(self):
+        story = {"title": "x", "summary": "y"}
+        result = {"visual_type": "bar_chart", "visual_confidence": 9, "bar_chart": {"title": "t"}}
+        new_result, warning = verify.check_visual_confidence(result, story)
+        self.assertIsNone(warning)
+        self.assertEqual(new_result["visual_type"], "bar_chart")
+
+    def test_missing_confidence_fails_closed(self):
+        story = {"title": "x", "summary": "y"}
+        result = {"visual_type": "bar_chart", "bar_chart": {"title": "t"}}
+        new_result, warning = verify.check_visual_confidence(result, story)
+        self.assertIsNotNone(warning)
+        self.assertEqual(new_result["visual_type"], "none")
+
+    def test_none_visual_type_is_a_noop(self):
+        story = {"title": "x", "summary": "y"}
+        result = {"visual_type": "none"}
+        new_result, warning = verify.check_visual_confidence(result, story)
+        self.assertIsNone(warning)
+
+
+class ShapeMatchTests(unittest.TestCase):
+    def test_trend_chart_forced_onto_single_stat_story_is_blocked(self):
+        # No temporal-sequence language, no ranked list, just one flat number -- a
+        # multi-period trend line has no business being attached to this story.
+        story = {"title": "Company X reports record quarterly profit", "summary": "Company X posted a record profit figure."}
+        result = {
+            "visual_type": "trend_chart", "visual_confidence": 8,
+            "trend_chart": {"title": "Profit", "labels": ["A", "B", "C"], "values": [1, 2, 3], "fit": "linear", "unit": ""},
+        }
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNotNone(warning)
+        self.assertEqual(new_result["visual_type"], "none")
+
+    def test_trend_chart_on_a_genuine_trend_story_passes(self):
+        story = {"title": "Stock rallies for a third consecutive week", "summary": "Shares have risen steadily this week and last week."}
+        result = {"visual_type": "trend_chart", "trend_chart": {"title": "t"}}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning)
+
+    def test_correlation_matrix_on_unrelated_story_is_blocked(self):
+        story = {"title": "Company X reports record quarterly profit", "summary": "Company X posted a record profit figure."}
+        result = {"visual_type": "correlation_matrix_chart", "correlation_matrix_chart": {"title": "t"}}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNotNone(warning)
+        self.assertEqual(new_result["visual_type"], "none")
+
+    def test_price_chart_always_plausible_single_stat(self):
+        # price_chart's shape set includes single_stat, which is always in the universal
+        # baseline -- should never be shape-blocked regardless of story content.
+        story = {"title": "Anything at all", "summary": "No special signals here."}
+        result = {"visual_type": "price_chart", "ticker": "AAPL"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning)
+
+    def test_unmapped_visual_type_is_a_noop(self):
+        story = {"title": "x", "summary": "y"}
+        result = {"visual_type": "none"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning)
+
+
+class VisualThreadConsistencyTests(unittest.TestCase):
+    def test_chart_number_echoed_in_thread_passes(self):
+        story = {"title": "x", "summary": "y"}
+        thread = ["1/1 Fed cut rates to 4.50% from 4.75%."]
+        result = {
+            "visual_type": "bar_chart",
+            "bar_chart": {"title": "t", "labels": ["Before", "After"], "values": [4.75, 4.50], "unit": "%"},
+        }
+        new_result, warning = verify.check_visual_thread_consistency(result, story, thread)
+        self.assertIsNone(warning)
+        self.assertEqual(new_result["visual_type"], "bar_chart")
+
+    def test_chart_numbers_never_mentioned_in_thread_is_blocked(self):
+        story = {"title": "x", "summary": "y"}
+        thread = ["1/1 The Fed held policy steady today, as widely expected."]
+        result = {
+            "visual_type": "bar_chart",
+            "bar_chart": {"title": "t", "labels": ["Before", "After"], "values": [4.75, 4.50], "unit": "%"},
+        }
+        new_result, warning = verify.check_visual_thread_consistency(result, story, thread)
+        self.assertIsNotNone(warning)
+        self.assertEqual(new_result["visual_type"], "none")
+
+    def test_ticker_driven_types_are_not_checked(self):
+        story = {"title": "x", "summary": "y"}
+        result = {"visual_type": "price_chart", "ticker": "AAPL"}
+        new_result, warning = verify.check_visual_thread_consistency(result, story, ["anything"])
+        self.assertIsNone(warning)
+
+
+class VisualVarietyTests(unittest.TestCase):
+    def test_repeat_with_low_confidence_is_suppressed(self):
+        story = {"title": "x", "summary": "y"}
+        result = {"visual_type": "bar_chart", "visual_confidence": 6, "bar_chart": {"title": "t"}}
+        new_result, warning = verify.check_visual_variety(result, story, ["bar_chart"])
+        self.assertIsNotNone(warning)
+        self.assertEqual(new_result["visual_type"], "none")
+
+    def test_repeat_with_high_confidence_survives(self):
+        story = {"title": "x", "summary": "y"}
+        result = {"visual_type": "bar_chart", "visual_confidence": 9, "bar_chart": {"title": "t"}}
+        new_result, warning = verify.check_visual_variety(result, story, ["bar_chart"])
+        self.assertIsNone(warning)
+        self.assertEqual(new_result["visual_type"], "bar_chart")
+
+    def test_non_repeat_is_never_touched(self):
+        story = {"title": "x", "summary": "y"}
+        result = {"visual_type": "pie_chart", "visual_confidence": 2, "pie_chart": {"title": "t"}}
+        new_result, warning = verify.check_visual_variety(result, story, ["bar_chart"])
+        self.assertIsNone(warning)
+        self.assertEqual(new_result["visual_type"], "pie_chart")
+
+    def test_no_history_is_a_noop(self):
+        story = {"title": "x", "summary": "y"}
+        result = {"visual_type": "bar_chart", "visual_confidence": 2, "bar_chart": {"title": "t"}}
+        new_result, warning = verify.check_visual_variety(result, story, [])
+        self.assertIsNone(warning)
+
+
+class SelectVisualOrchestratorTests(unittest.TestCase):
+    def test_confident_grounded_visual_survives_full_pipeline(self):
+        story = {"title": "Fed cuts rates to 4.50% from 4.75%", "summary": "The Fed cut its target rate to 4.50% from 4.75%."}
+        thread = ["1/1 The Fed cut rates to 4.50% from 4.75%, its second cut this year."]
+        result = {
+            "visual_type": "bar_chart", "visual_confidence": 9,
+            "bar_chart": {"title": "Fed funds rate", "labels": ["Before", "After"], "values": [4.75, 4.50], "unit": "%"},
+        }
+        new_result, warnings = verify.select_visual(result, story, thread, [])
+        self.assertEqual(new_result["visual_type"], "bar_chart")
+        self.assertEqual(warnings, [])
+
+    def test_low_confidence_visual_is_dropped_by_orchestrator(self):
+        story = {"title": "Fed cuts rates to 4.50% from 4.75%", "summary": "The Fed cut its target rate to 4.50% from 4.75%."}
+        thread = ["1/1 The Fed cut rates to 4.50% from 4.75%, its second cut this year."]
+        result = {
+            "visual_type": "bar_chart", "visual_confidence": 2,
+            "bar_chart": {"title": "Fed funds rate", "labels": ["Before", "After"], "values": [4.75, 4.50], "unit": "%"},
+        }
+        new_result, warnings = verify.select_visual(result, story, thread, [])
+        self.assertEqual(new_result["visual_type"], "none")
+        self.assertTrue(warnings)
+
+
+class CustomStatVisualTests(unittest.TestCase):
+    def test_renders_with_valid_spec(self):
+        image_bytes = chart.generate_custom_stat_visual(
+            {"title": "Revenue Beat", "stats": [{"label": "Actual", "value": 30, "unit": "B"}, {"label": "Estimate", "value": 28, "unit": "B"}]},
+            story_source="markets",
+        )
+        self.assertIsNotNone(image_bytes)
+        self.assertGreater(len(image_bytes), 0)
+
+    def test_rejects_too_many_stats(self):
+        image_bytes = chart.generate_custom_stat_visual({"title": "t", "stats": [{"label": "a", "value": 1}] * 4})
+        self.assertIsNone(image_bytes)
+
+    def test_rejects_empty_stats(self):
+        image_bytes = chart.generate_custom_stat_visual({"title": "t", "stats": []})
+        self.assertIsNone(image_bytes)
+
+    def test_rejects_non_numeric_value(self):
+        image_bytes = chart.generate_custom_stat_visual({"title": "t", "stats": [{"label": "a", "value": "not a number"}]})
+        self.assertIsNone(image_bytes)
+
+    def test_is_grounded_like_other_spec_driven_types(self):
+        story = {"title": "Fed cuts rates to 4.50%", "summary": "The Fed lowered its rate to 4.50%."}
+        result = {
+            "visual_type": "custom_stat_visual",
+            "custom_stat_visual": {"title": "Made Up Stat", "stats": [{"label": "Fabricated", "value": 999, "unit": ""}]},
+        }
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIsNotNone(warning)
+        self.assertEqual(new_result["visual_type"], "none")
+
+    def test_dispatches_through_resolve_visual(self):
+        result = {
+            "visual_type": "custom_stat_visual",
+            "custom_stat_visual": {"title": "t", "stats": [{"label": "a", "value": 1, "unit": ""}]},
+        }
+        image_bytes = chart.resolve_visual(result, source="markets")
+        self.assertIsNotNone(image_bytes)
+
+
+class RecentVisualsStateTests(unittest.TestCase):
+    def test_round_trip(self):
+        st = {}
+        st = state.save_recent_visuals(st, ["bar_chart", "price_chart", "none", "pie_chart"])
+        self.assertEqual(state.get_recent_visuals(st), ["bar_chart", "price_chart", "pie_chart"])
+
+    def test_none_entries_are_dropped(self):
+        st = {}
+        st = state.save_recent_visuals(st, ["none", "none"])
+        self.assertEqual(state.get_recent_visuals(st), [])
+
+    def test_window_is_capped(self):
+        st = {}
+        used = [f"type_{i}" for i in range(20)]
+        st = state.save_recent_visuals(st, used)
+        recent = state.get_recent_visuals(st)
+        self.assertEqual(len(recent), state.RECENT_VISUALS_WINDOW)
+        self.assertEqual(recent[-1], "type_19")
+
+    def test_missing_key_defaults_to_empty(self):
+        self.assertEqual(state.get_recent_visuals({}), [])
+
+    def test_seeds_into_next_runs_used_visuals(self):
+        # Simulates main.py's actual usage: one run's history seeds the next run's list, which
+        # generate.py then appends to as it processes stories.
+        st = {}
+        st = state.save_recent_visuals(st, ["bar_chart", "candlestick_chart"])
+
+        used_visuals = state.get_recent_visuals(st)
+        used_visuals.append("pie_chart")  # a new post generated this run
+
+        st = state.save_recent_visuals(st, used_visuals)
+        self.assertEqual(state.get_recent_visuals(st), ["bar_chart", "candlestick_chart", "pie_chart"])
 
 
 class WatermarkTests(unittest.TestCase):

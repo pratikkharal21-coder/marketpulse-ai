@@ -1876,7 +1876,50 @@ def generate_cumulative_flow_chart(spec):
     return _save_fig(fig)
 
 
-def resolve_visual(result, label=None, stats_out=None):
+def generate_custom_stat_visual(spec, story_source=None):
+    """Last-resort visual for a story whose data is clean and verifiable but doesn't fit the
+    shape of any of the other 35 pre-coded chart types -- a simple stat-card of 1-3 big
+    numbers with labels. Every value still goes through the same spec-grounding checks as
+    every other spec-driven type (see verify.SPEC_DRIVEN_FIELDS); this function does not
+    invent or estimate anything itself. Carries its own source/timestamp footer in addition
+    to the usual watermark, since it has no other visual convention to inherit one from."""
+    if not spec:
+        return None
+
+    title = spec.get("title") or ""
+    stats = [s for s in (spec.get("stats") or []) if isinstance(s, dict)]
+    if not (1 <= len(stats) <= 3):
+        logger.warning("Malformed custom_stat_visual spec, skipping: %s", spec)
+        return None
+    try:
+        values = [float(s["value"]) for s in stats]
+    except (TypeError, ValueError, KeyError):
+        logger.warning("Non-numeric values in custom_stat_visual spec, skipping: %s", spec)
+        return None
+    labels = [s.get("label") or "" for s in stats]
+    units = [s.get("unit") or "" for s in stats]
+
+    n = len(values)
+    width = max(5.0, 2.2 * n + 2.0)
+    fig, axes = plt.subplots(1, n, figsize=(width, 3.4), dpi=140)
+    axes = [axes] if n == 1 else list(axes)
+    palette = [BLUE, GREEN, AMBER]
+
+    for ax, value, label_text, unit, color in zip(axes, values, labels, units, palette):
+        ax.text(0.5, 0.58, f"{value:,.2f}{unit}", ha="center", va="center", fontsize=24, fontweight="bold", color=color, transform=ax.transAxes)
+        ax.text(0.5, 0.22, _wrap_title(label_text, width=16, max_lines=2), ha="center", va="center", fontsize=10, color="#444444", transform=ax.transAxes)
+        ax.axis("off")
+
+    fig.suptitle(_wrap_title(title, width=48), fontsize=15, fontweight="bold", color="#1a1a1a", y=0.96)
+
+    footer = f"Source: {story_source or 'verified data'} · {_utcnow_iso()[:10]} UTC"
+    fig.text(0.02, 0.02, footer, ha="left", va="bottom", fontsize=7.5, color="#999999", style="italic")
+
+    fig.patch.set_facecolor("white")
+    return _save_fig(fig)
+
+
+def resolve_visual(result, label=None, stats_out=None, source=None):
     """Dispatch to the right chart renderer based on result['visual_type']. `stats_out`, if
     given, is filled in-place with the real fetched data backing a ticker-driven visual (or
     the Wikipedia source for real_world_image) -- callers use this to cross-check the
@@ -1957,6 +2000,8 @@ def resolve_visual(result, label=None, stats_out=None):
         return generate_zscore_chart(result.get("zscore_chart"))
     if visual_type == "cumulative_flow_chart":
         return generate_cumulative_flow_chart(result.get("cumulative_flow_chart"))
+    if visual_type == "custom_stat_visual":
+        return generate_custom_stat_visual(result.get("custom_stat_visual"), story_source=source)
     return None
 
 

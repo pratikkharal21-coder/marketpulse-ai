@@ -64,7 +64,8 @@ use to quote-post this thread later — a different angle than the thread itself
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 {"thread": ["1/9 ...", "2/9 ...", ...], \
 "hook_shape": "number_led"|"contrarian"|"stakes"|"question"|"surprising_fact", \
-"visual_type": "price_chart"|"candlestick_chart"|"renko_chart"|"pnf_chart"|"ohlc_chart"|"heikin_ashi_chart"|"kagi_chart"|"area_chart"|"volume_chart"|"volume_profile_chart"|"yield_curve_chart"|"seasonality_chart"|"bar_chart"|"dumbbell_chart"|"grouped_bar_chart"|"stacked_bar_chart"|"waterfall_chart"|"slope_chart"|"bullet_chart"|"pie_chart"|"donut_chart"|"treemap_chart"|"histogram"|"box_plot"|"violin_plot"|"scatter_chart"|"bubble_chart"|"correlation_matrix_chart"|"regression_chart"|"trend_chart"|"term_structure_chart"|"spread_chart"|"zscore_chart"|"cumulative_flow_chart"|"flowchart"|"real_world_image"|"none", \
+"visual_type": "price_chart"|"candlestick_chart"|"renko_chart"|"pnf_chart"|"ohlc_chart"|"heikin_ashi_chart"|"kagi_chart"|"area_chart"|"volume_chart"|"volume_profile_chart"|"yield_curve_chart"|"seasonality_chart"|"bar_chart"|"dumbbell_chart"|"grouped_bar_chart"|"stacked_bar_chart"|"waterfall_chart"|"slope_chart"|"bullet_chart"|"pie_chart"|"donut_chart"|"treemap_chart"|"histogram"|"box_plot"|"violin_plot"|"scatter_chart"|"bubble_chart"|"correlation_matrix_chart"|"regression_chart"|"trend_chart"|"term_structure_chart"|"spread_chart"|"zscore_chart"|"cumulative_flow_chart"|"flowchart"|"real_world_image"|"custom_stat_visual"|"none", \
+"visual_confidence": 0-10 (how confidently the chosen visual_type's DATA SHAPE fits this story; a low score drops the visual even if visual_type is set), \
 "ticker": "AAPL" or null (used by price_chart, candlestick_chart, renko_chart, pnf_chart, ohlc_chart, heikin_ashi_chart, kagi_chart, area_chart, volume_chart, volume_profile_chart, seasonality_chart), \
 "bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "...", "orientation": "vertical"|"horizontal"} or null, \
 "dumbbell_chart": {"title": "...", "labels": [...], "start_values": [...], "end_values": [...], "start_label": "...", "end_label": "...", "unit": "..."} or null, \
@@ -88,6 +89,7 @@ Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 "spread_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
 "zscore_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
 "cumulative_flow_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
+"custom_stat_visual": {"title": "...", "stats": [{"label": "...", "value": 0, "unit": "..."}, ...]} or null, \
 "flowchart": {"steps": [...]} or null, \
 "image_query": "..." or null, \
 "seed_replies": ["...", "..."], "quote_angle": "...", \
@@ -148,10 +150,10 @@ def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=No
             logger.warning("Blocked story '%s': %s", story["title"], reason)
             return None
 
-        result, spec_warning = verify.check_visual_relevance(result, grounding_story)
+        result, visual_warnings = verify.select_visual(result, grounding_story, thread, used_visuals)
 
         chart_stats = {}
-        chart_image = resolve_visual(result, label=story["title"], stats_out=chart_stats)
+        chart_image = resolve_visual(result, label=story["title"], stats_out=chart_stats, source=story.get("source"))
 
         ok, reason = verify.verify_ticker_direction(thread, chart_stats)
         if not ok:
@@ -159,7 +161,7 @@ def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=No
             return None
 
         advisory_warnings = verify.check_bare_numbers(thread) + verify.check_verb_intensity(thread, chart_stats)
-        provenance = verify.build_provenance(story, chart_stats, spec_warning, advisory_warnings)
+        provenance = verify.build_provenance(story, chart_stats, visual_warnings, advisory_warnings)
 
         seed_replies = result.get("seed_replies") or []
         if not isinstance(seed_replies, list):

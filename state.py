@@ -56,3 +56,20 @@ def mark_sent(state, items):
     for item in items:
         state["seen"][_hash_item(item)] = now
     return state
+
+
+RECENT_VISUALS_WINDOW = 10
+
+
+def get_recent_visuals(state):
+    """The visual types used by the last several PUBLISHED posts, across runs -- not just
+    within the current run's batch -- so "avoid repeating the same visual type back-to-back"
+    holds across separate scheduled runs, not only within one."""
+    return list(state.get("recent_visuals", []))[-RECENT_VISUALS_WINDOW:]
+
+
+def save_recent_visuals(state, used_visuals):
+    """`used_visuals` is the seeded history plus everything appended during this run, so this
+    replaces (not extends) the stored list to avoid double-counting on the next run."""
+    state["recent_visuals"] = [v for v in used_visuals if v and v != "none"][-RECENT_VISUALS_WINDOW:]
+    return state

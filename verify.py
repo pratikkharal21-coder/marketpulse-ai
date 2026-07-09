@@ -18,7 +18,7 @@ SPEC_DRIVEN_FIELDS = (
     "slope_chart", "bullet_chart", "pie_chart", "donut_chart", "treemap_chart", "histogram",
     "box_plot", "violin_plot", "scatter_chart", "bubble_chart", "correlation_matrix_chart",
     "regression_chart", "trend_chart", "term_structure_chart", "spread_chart", "zscore_chart",
-    "cumulative_flow_chart",
+    "cumulative_flow_chart", "custom_stat_visual",
 )
 
 TICKER_DRIVEN_TYPES = (
@@ -26,6 +26,99 @@ TICKER_DRIVEN_TYPES = (
     "heikin_ashi_chart", "kagi_chart", "area_chart", "volume_chart", "volume_profile_chart",
     "seasonality_chart",
 )
+
+# Every visual_type mapped to the data "shape(s)" it's actually suited to represent. Used by
+# check_shape_match to catch a visual type being force-fit onto a story whose data plainly
+# isn't that shape (e.g. a multi-period trend line for a single two-number comparison).
+# "single_stat", "photo_subject", and "process" are treated as near-universally plausible (see
+# classify_story_shape) since almost any story can support a single-number callout, a subject
+# photo, or a narrative cause-effect chart -- this keeps the check conservative, only firing on
+# a clear mismatch rather than a marginal one.
+VISUAL_TYPE_SHAPES = {
+    "price_chart": {"single_stat", "multi_period_trend"},
+    "candlestick_chart": {"multi_period_trend"},
+    "renko_chart": {"multi_period_trend"},
+    "pnf_chart": {"multi_period_trend"},
+    "ohlc_chart": {"multi_period_trend"},
+    "heikin_ashi_chart": {"multi_period_trend"},
+    "kagi_chart": {"multi_period_trend"},
+    "area_chart": {"single_stat", "multi_period_trend"},
+    "volume_chart": {"multi_period_trend"},
+    "volume_profile_chart": {"multi_period_trend"},
+    "yield_curve_chart": {"macro_curve"},
+    "seasonality_chart": {"multi_period_trend"},
+    "bar_chart": {"two_point_comparison", "ranked_list"},
+    "dumbbell_chart": {"two_point_comparison", "ranked_list"},
+    "grouped_bar_chart": {"ranked_list", "two_point_comparison"},
+    "stacked_bar_chart": {"composition", "ranked_list"},
+    "waterfall_chart": {"breakdown", "ranked_list"},
+    "slope_chart": {"two_point_comparison", "ranked_list"},
+    "bullet_chart": {"single_stat", "two_point_comparison"},
+    "pie_chart": {"composition"},
+    "donut_chart": {"composition"},
+    "treemap_chart": {"composition"},
+    "histogram": {"distribution"},
+    "box_plot": {"distribution"},
+    "violin_plot": {"distribution"},
+    "scatter_chart": {"correlation"},
+    "bubble_chart": {"correlation"},
+    "correlation_matrix_chart": {"correlation"},
+    "regression_chart": {"correlation"},
+    "trend_chart": {"multi_period_trend"},
+    "term_structure_chart": {"macro_curve"},
+    "spread_chart": {"multi_period_trend", "macro_curve"},
+    "zscore_chart": {"ranked_list", "distribution"},
+    "cumulative_flow_chart": {"flow_over_time", "multi_period_trend"},
+    "flowchart": {"process"},
+    "real_world_image": {"photo_subject"},
+    "custom_stat_visual": {"single_stat", "two_point_comparison"},
+}
+
+# Shapes considered plausible for virtually any story -- a mismatch is only meaningful when the
+# chosen type ALSO doesn't match any shape actually detected in the story text.
+_UNIVERSAL_SHAPES = frozenset({"single_stat", "photo_subject", "process"})
+
+_SHAPE_SIGNALS = {
+    "multi_period_trend": (
+        # Bare "week"/"month"/"quarter" are deliberately excluded -- they're substrings of
+        # "quarterly"/"monthly" and appear in almost any earnings story regardless of whether
+        # a multi-period trend is actually being described; these phrase-level signals are
+        # more specific to an actual sequence-over-time being discussed.
+        "trend", "since", "year-to-date", "ytd", "days in a row", "consecutive", "streak",
+        "over the past", "over the last", "this week", "this month", "recent weeks",
+        "recent months", "in recent", "week-over-week", "month-over-month", "several weeks",
+        "several months", "several quarters", "past few",
+    ),
+    "ranked_list": (
+        "top ", "biggest", "largest", "leading", "worst", "best-performing", "best performing",
+        "ranked", "among the", "list of", "highest", "lowest",
+    ),
+    "two_point_comparison": (
+        " vs ", " vs. ", "versus", "compared to", "compared with", "from ", "before and after",
+        "up from", "down from", "rose from", "fell from",
+    ),
+    "composition": (
+        "share of", "percent of", "% of", "makes up", "portion", "mix", "breakdown", "weighting",
+        "weightings", "comprised of", "consists of",
+    ),
+    "distribution": (
+        "range of", "spread", "distribution", "varied between", "average of", "median",
+        "spread of",
+    ),
+    "correlation": (
+        "correlat", "relationship between", "tied to", "linked to", "in line with", "tracks",
+        "moves with",
+    ),
+    "macro_curve": (
+        "yield curve", "term structure", "tenor", "maturities", "2s10s", "curve",
+    ),
+    "flow_over_time": (
+        "inflows", "outflows", "fund flows", "cumulative", "net flows",
+    ),
+    "breakdown": (
+        "bridge", "breakdown", "broken down", "made up of", "contributors to", "drivers of",
+    ),
+}
 
 _NUMBER_RE = re.compile(r"-?\d[\d,]*\.?\d*")
 
@@ -155,6 +248,18 @@ def _suppress(result, story, warning, field=None):
         result[field] = None
     result["visual_type"] = "none"
     return result, warning
+
+
+def _field_for_visual_type(visual_type):
+    """Which key in `result` holds a given visual_type's content, so suppressing it can null
+    the right thing instead of leaving stale data sitting unused in the response."""
+    if visual_type in SPEC_DRIVEN_FIELDS or visual_type == "flowchart":
+        return visual_type
+    if visual_type in TICKER_DRIVEN_TYPES:
+        return "ticker"
+    if visual_type == "real_world_image":
+        return "image_query"
+    return None
 
 
 def ground_visual_spec(result, story):
@@ -309,6 +414,179 @@ def check_visual_relevance(result, story):
     return ground_visual_spec(result, story)
 
 
+VISUAL_CONFIDENCE_THRESHOLD = 6
+VARIETY_REPEAT_CONFIDENCE_THRESHOLD = 8
+RECENT_VISUALS_WINDOW = 10
+
+
+def check_visual_confidence(result, story):
+    """The model must self-report how confidently its chosen visual_type's DATA SHAPE (not
+    just its numbers) actually fits this story, via a "visual_confidence" (0-10) field --
+    "if the match... is weak or uncertain, default to no visual rather than guessing." A
+    missing score fails closed (treated as 0) rather than assumed fine, since an LLM omitting
+    the field is itself a sign the response wasn't produced carefully. Returns
+    (result, warning_or_None); result may be mutated."""
+    visual_type = result.get("visual_type") or "none"
+    if visual_type == "none":
+        return result, None
+
+    confidence = result.get("visual_confidence")
+    try:
+        confidence = float(confidence)
+    except (TypeError, ValueError):
+        confidence = 0
+
+    if confidence < VISUAL_CONFIDENCE_THRESHOLD:
+        return _suppress(
+            result, story,
+            f"visual '{visual_type}' suppressed: self-reported visual_confidence "
+            f"{confidence} is below the {VISUAL_CONFIDENCE_THRESHOLD} threshold",
+            field=_field_for_visual_type(visual_type),
+        )
+    return result, None
+
+
+def classify_story_shape(story):
+    """Heuristic, deterministic classification of what data "shape(s)" a story's own text
+    plausibly supports (multi-period trend, ranked list, composition, ...), used as a second,
+    independent signal alongside the model's self-reported confidence -- catches a forced-fit
+    even if the model is (wrongly) confident about it. Always includes the universal shapes
+    (single_stat/photo_subject/process) so the check stays conservative. Returns a set of
+    shape tags."""
+    text = f"{story.get('title', '')} {story.get('summary', '')}".lower()
+    shapes = set(_UNIVERSAL_SHAPES)
+    for shape, signals in _SHAPE_SIGNALS.items():
+        if any(sig in text for sig in signals):
+            shapes.add(shape)
+
+    # A bare two-number comparison ("X vs Y", "from A to B") without any of the above signals
+    # is still a very common story shape, so detect it directly off the raw text_numbers count.
+    if len(_extract_text_numbers(text)) == 2:
+        shapes.add("two_point_comparison")
+    if len(_extract_text_numbers(text)) >= 3:
+        shapes.add("ranked_list")
+
+    return shapes
+
+
+def check_shape_match(result, story):
+    """Cross-checks the chosen visual_type's expected data shape(s) (VISUAL_TYPE_SHAPES)
+    against the shapes actually detected in the story (classify_story_shape). Blocks only on
+    a CLEAR, total mismatch (zero shape overlap) -- deliberately conservative, since shape
+    detection from a short headline/summary is inherently fuzzy and the goal is to catch
+    obvious forced fits (e.g. a correlation matrix for a single-number earnings beat), not to
+    second-guess every marginal call. Returns (result, warning_or_None); result may be
+    mutated."""
+    visual_type = result.get("visual_type") or "none"
+    expected_shapes = VISUAL_TYPE_SHAPES.get(visual_type)
+    if not expected_shapes:
+        return result, None
+
+    story_shapes = classify_story_shape(story)
+    if expected_shapes & story_shapes:
+        return result, None
+
+    return _suppress(
+        result, story,
+        f"visual '{visual_type}' suppressed: its expected data shape {sorted(expected_shapes)} "
+        f"doesn't match anything detected in the story (detected: {sorted(story_shapes)})",
+        field=_field_for_visual_type(visual_type),
+    )
+
+
+def check_visual_thread_consistency(result, story, thread_lines):
+    """The chart and the tweet text are generated from the same JSON response but nothing
+    otherwise confirms they actually agree with each other -- a spec-driven chart could show
+    numbers that are individually grounded in the source story yet never actually appear in
+    what the thread says, which would still read as a mismatch to anyone comparing the two. At
+    least one of the chart's own numbers must be echoed in the thread text. Returns
+    (result, warning_or_None); result may be mutated."""
+    visual_type = result.get("visual_type") or "none"
+    if visual_type not in SPEC_DRIVEN_FIELDS:
+        return result, None
+
+    spec = result.get(visual_type)
+    if not spec:
+        return result, None
+
+    spec_numbers = _collect_spec_numbers(spec)
+    if not spec_numbers:
+        return result, None
+
+    thread_numbers = _extract_text_numbers(" ".join(thread_lines))
+    if any(_is_grounded(n, thread_numbers) for n in spec_numbers):
+        return result, None
+
+    return _suppress(
+        result, story,
+        f"visual '{visual_type}' suppressed: none of its chart values are echoed anywhere "
+        f"in the accompanying thread text",
+        field=visual_type,
+    )
+
+
+def check_visual_variety(result, story, recent_visuals):
+    """Recency-based tiebreaker: if the chosen visual_type is identical to the single most
+    recently PUBLISHED one (tracked across runs, not just this batch) and the model's own
+    confidence in the pick isn't very high, prefer skipping the visual over repeating it
+    back-to-back. Never overrides a genuinely confident match -- variety is only a
+    tiebreaker among otherwise-marginal calls, per "must never override relevance or
+    accuracy." Returns (result, warning_or_None); result may be mutated."""
+    visual_type = result.get("visual_type") or "none"
+    if visual_type == "none" or not recent_visuals:
+        return result, None
+
+    if recent_visuals[-1] != visual_type:
+        return result, None
+
+    try:
+        confidence = float(result.get("visual_confidence") or 0)
+    except (TypeError, ValueError):
+        confidence = 0
+    if confidence >= VARIETY_REPEAT_CONFIDENCE_THRESHOLD:
+        return result, None
+
+    return _suppress(
+        result, story,
+        f"visual '{visual_type}' suppressed for variety: repeats the immediately preceding "
+        f"post's visual type and confidence ({confidence}) is below the "
+        f"{VARIETY_REPEAT_CONFIDENCE_THRESHOLD} repeat threshold",
+        field=_field_for_visual_type(visual_type),
+    )
+
+
+def select_visual(result, story, thread_lines, recent_visuals):
+    """Single orchestrated entry point for the whole visual-selection pipeline: subject/content
+    grounding, self-reported confidence threshold, data-shape match, chart-vs-thread
+    consistency, and cross-run variety -- run in sequence, each seeing the previous step's
+    (possibly already-suppressed) result. Callers get one call instead of wiring five
+    individually, and any check added here in the future is automatically applied everywhere
+    this is called. Returns (result, warnings) where warnings is a list (possibly empty)."""
+    warnings = []
+
+    result, w = check_visual_relevance(result, story)
+    if w:
+        warnings.append(w)
+
+    result, w = check_visual_confidence(result, story)
+    if w:
+        warnings.append(w)
+
+    result, w = check_shape_match(result, story)
+    if w:
+        warnings.append(w)
+
+    result, w = check_visual_thread_consistency(result, story, thread_lines)
+    if w:
+        warnings.append(w)
+
+    result, w = check_visual_variety(result, story, recent_visuals)
+    if w:
+        warnings.append(w)
+
+    return result, warnings
+
+
 def check_causal_claims(thread_lines, story):
     """Any 'X because of Y' / 'triggered by Y' / 'due to Y' style claim must share at least
     one non-generic word with the story's own title/summary -- otherwise the model is
@@ -396,9 +674,10 @@ def check_bare_numbers(thread_lines):
     return warnings
 
 
-def build_provenance(story, chart_stats=None, spec_warning=None, bare_number_warnings=None):
+def build_provenance(story, chart_stats=None, visual_warnings=None, advisory_warnings=None):
     """A retained-but-not-necessarily-shown record of what free source(s) backed this piece
-    of content and when, so any future error can be traced back and audited."""
+    of content and when, so any future error can be traced back and audited. `visual_warnings`
+    and `advisory_warnings` are each lists (possibly empty/None)."""
     provenance = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "story_source": story.get("source"),
@@ -412,10 +691,10 @@ def build_provenance(story, chart_stats=None, spec_warning=None, bare_number_war
         src = chart_stats.get("source")
         if src:
             provenance["data_sources"].append(src)
-    if spec_warning:
-        provenance["warnings"].append(spec_warning)
-    if bare_number_warnings:
-        provenance["warnings"].extend(bare_number_warnings)
+    if visual_warnings:
+        provenance["warnings"].extend(visual_warnings)
+    if advisory_warnings:
+        provenance["warnings"].extend(advisory_warnings)
     return provenance
 
 

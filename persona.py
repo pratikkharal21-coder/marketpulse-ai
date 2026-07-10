@@ -44,9 +44,8 @@ ENGAGEMENT_GUIDELINES = (
     "structure or opening phrase twice in a row.\n"
     "- At most one emoji total per thread, only if it adds real signal (e.g. a direction arrow) — "
     "never a decorative one.\n"
-    "- Hashtags: the FIRST tweet must have zero hashtags. The LAST tweet may use up to 2, and only "
-    "specific ones tied to the actual subject (e.g. #Fed, #CPI, a ticker like #AAPL) — never vague "
-    "or generic tags. No other tweet in the thread should use a hashtag."
+    "- No hashtags anywhere in the thread, in any tweet — they don't aid reach on X and read as "
+    "dated. Zero hashtags, no exceptions."
 )
 
 VALUE_GUIDELINES = (

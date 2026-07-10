@@ -290,15 +290,9 @@ class HashtagDisciplineTests(unittest.TestCase):
         ])
         self.assertFalse(ok)
 
-    def test_closing_tweet_within_limit_passes(self):
+    def test_closing_tweet_with_any_hashtag_is_blocked(self):
         ok, reason = verify.check_hashtag_discipline([
-            "1/2 Fed cuts rates to 4.50% from 4.75%.", "2/2 Watch the Jul 30 meeting. #Fed #CPI",
-        ])
-        self.assertTrue(ok, reason)
-
-    def test_closing_tweet_over_limit_is_blocked(self):
-        ok, reason = verify.check_hashtag_discipline([
-            "1/2 Fed cuts rates to 4.50% from 4.75%.", "2/2 Watch next week. #Fed #CPI #Markets",
+            "1/2 Fed cuts rates to 4.50% from 4.75%.", "2/2 Watch the Jul 30 meeting. #Fed",
         ])
         self.assertFalse(ok)
 

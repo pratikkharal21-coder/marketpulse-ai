@@ -209,7 +209,6 @@ _UNCONDITIONAL_FILLER_RE = re.compile(
 )
 _CONDITIONAL_FILLER_RE = re.compile(r"\b(eyes on|in focus)\b", re.IGNORECASE)
 _HASHTAG_RE = re.compile(r"#\w+")
-MAX_CLOSING_HASHTAGS = 2
 
 _PERIOD_TOKEN_RE = re.compile(r"\bQ[1-4]\b|\bFY\s?\d{2,4}\b|\b20\d{2}\b", re.IGNORECASE)
 
@@ -755,25 +754,12 @@ def check_banned_filler(thread_lines):
 
 
 def check_hashtag_discipline(thread_lines):
-    """Hard block: the first tweet must have zero hashtags (a hashtag-led opener reads as spam,
-    not a data claim), the last tweet may use at most MAX_CLOSING_HASHTAGS, and no tweet in
-    between may use any. Deterministic counting, not a heuristic. Returns (ok, reason_or_None)."""
-    if not thread_lines:
-        return True, None
-
-    first_tags = _HASHTAG_RE.findall(thread_lines[0])
-    if first_tags:
-        return False, f"first tweet must have zero hashtags, found {first_tags}"
-
-    for line in thread_lines[1:-1]:
+    """Hard block: zero hashtags anywhere in the thread, in any tweet -- X doesn't favor them
+    and they read as dated. Deterministic counting, not a heuristic. Returns (ok, reason_or_None)."""
+    for line in thread_lines:
         tags = _HASHTAG_RE.findall(line)
         if tags:
-            return False, f"only the closing tweet may use hashtags, found {tags} in: {line[:80]}"
-
-    if len(thread_lines) > 1:
-        last_tags = _HASHTAG_RE.findall(thread_lines[-1])
-        if len(last_tags) > MAX_CLOSING_HASHTAGS:
-            return False, f"closing tweet has {len(last_tags)} hashtags, max is {MAX_CLOSING_HASHTAGS}: {last_tags}"
+            return False, f"no hashtags allowed anywhere in the thread, found {tags} in: {line[:80]}"
 
     return True, None
 

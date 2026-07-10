@@ -925,6 +925,120 @@ def generate_historical_volatility_chart(ticker, label=None, stats_out=None):
     return _save_fig(fig)
 
 
+CFTC_COT_API_URL = "https://publicreporting.cftc.gov/resource/6dca-aqww.json"
+
+# CFTC's Commitments of Traders report is free and keyless, but its market names are
+# idiosyncratic and there's no reliable way to derive them from a ticker -- e.g. yfinance's
+# CL=F could plausibly match several different CFTC-listed WTI contracts. Curated to only the
+# instruments verified (during development) to resolve to exactly one, unambiguous CFTC market,
+# rather than guessing via fuzzy name matching.
+COT_MARKET_NAMES = {
+    "GC=F": "GOLD - COMMODITY EXCHANGE INC.",
+    "SI=F": "SILVER - COMMODITY EXCHANGE INC.",
+    "HG=F": "COPPER- #1 - COMMODITY EXCHANGE INC.",
+    "CL=F": "WTI FINANCIAL CRUDE OIL - NEW YORK MERCANTILE EXCHANGE",
+    "BZ=F": "BRENT LAST DAY - NEW YORK MERCANTILE EXCHANGE",
+    "NG=F": "NAT GAS NYME - NEW YORK MERCANTILE EXCHANGE",
+    "EURUSD=X": "EURO FX - CHICAGO MERCANTILE EXCHANGE",
+    "GBPUSD=X": "BRITISH POUND - CHICAGO MERCANTILE EXCHANGE",
+    "USDJPY=X": "JAPANESE YEN - CHICAGO MERCANTILE EXCHANGE",
+    "^GSPC": "E-MINI S&P 500 - CHICAGO MERCANTILE EXCHANGE",
+    "^IXIC": "NASDAQ MINI - CHICAGO MERCANTILE EXCHANGE",
+    "^DJI": "DJIA Consolidated - CHICAGO BOARD OF TRADE",
+    "^VIX": "VIX FUTURES - CBOE FUTURES EXCHANGE",
+}
+
+
+def _fetch_cot_history(market_name, weeks=26):
+    fields = (
+        "report_date_as_yyyy_mm_dd,noncomm_positions_long_all,noncomm_positions_short_all,"
+        "comm_positions_long_all,comm_positions_short_all,open_interest_all"
+    )
+    qs = urllib.parse.urlencode({
+        "$select": fields,
+        "$where": f"market_and_exchange_names = '{market_name}'",
+        "$order": "report_date_as_yyyy_mm_dd DESC",
+        "$limit": weeks,
+    })
+    req = urllib.request.Request(f"{CFTC_COT_API_URL}?{qs}", headers={"User-Agent": WIKI_USER_AGENT})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        rows = json.loads(resp.read())
+    return list(reversed(rows))  # API returns newest-first; chart wants chronological order
+
+
+def generate_cot_positioning_chart(ticker, label=None, stats_out=None):
+    """Weekly net speculative (large trader / 'managed money') futures positioning from the
+    CFTC's Commitments of Traders report -- free, keyless, no scraping, self-documenting named
+    fields (not a positional text file, which would risk silently mislabeling columns). Only
+    covers the curated instruments in COT_MARKET_NAMES; returns None for anything else rather
+    than guessing at a CFTC market name."""
+    if not ticker:
+        return None
+
+    ticker = ticker.strip()
+    market_name = COT_MARKET_NAMES.get(ticker)
+    if not market_name:
+        logger.warning("No CFTC COT market mapping for ticker %s", ticker)
+        return None
+
+    try:
+        rows = _fetch_cot_history(market_name)
+    except Exception as exc:
+        logger.warning("CFTC COT fetch failed for %s (%s): %s", ticker, market_name, exc)
+        return None
+    if len(rows) < 4:
+        logger.warning("Not enough CFTC COT history for %s (%s)", ticker, market_name)
+        return None
+
+    try:
+        dates = [datetime.fromisoformat(r["report_date_as_yyyy_mm_dd"].replace("Z", "")) for r in rows]
+        net_spec = [int(r["noncomm_positions_long_all"]) - int(r["noncomm_positions_short_all"]) for r in rows]
+        open_interest = [int(r["open_interest_all"]) for r in rows]
+    except (KeyError, ValueError, TypeError) as exc:
+        logger.warning("Malformed CFTC COT response for %s (%s): %s", ticker, market_name, exc)
+        return None
+
+    last_net = net_spec[-1]
+    colors = [GREEN if v >= 0 else RED for v in net_spec]
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.6), dpi=140)
+    ax.bar(dates, net_spec, color=colors, width=5.0)
+    ax.axhline(0, color="#999999", linewidth=0.8)
+
+    display_name = label or market_name.split(" - ")[0].title()
+    title = _wrap_title(display_name, width=42)
+    direction = "net long" if last_net >= 0 else "net short"
+    ax.set_title(
+        f"{title}\nSpeculators {direction}: {abs(last_net):,} contracts",
+        fontsize=12.5, fontweight="bold", loc="left", color="#1a1a1a",
+    )
+
+    locator = mdates.AutoDateLocator(minticks=4, maxticks=7)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    ax.grid(axis="y", color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update({
+            "source": "cftc_cot",
+            "ticker": ticker,
+            "cftc_market_name": market_name,
+            "report_date": dates[-1].isoformat(),
+            "net_speculative_position": last_net,
+            "prev_net_speculative_position": net_spec[-2],
+            "open_interest": open_interest[-1],
+            "fetched_at": _utcnow_iso(),
+        })
+    return _save_fig(fig)
+
+
 def _caption_image(image_bytes, title):
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -2252,6 +2366,8 @@ def resolve_visual(result, label=None, stats_out=None, source=None):
         return generate_drawdown_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "historical_volatility_chart":
         return generate_historical_volatility_chart(result.get("ticker"), label=label, stats_out=stats_out)
+    if visual_type == "cot_positioning_chart":
+        return generate_cot_positioning_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "dumbbell_chart":
         return generate_dumbbell_chart(result.get("dumbbell_chart"))
     if visual_type == "grouped_bar_chart":

@@ -25,7 +25,7 @@ TICKER_DRIVEN_TYPES = (
     "price_chart", "candlestick_chart", "renko_chart", "pnf_chart", "ohlc_chart",
     "heikin_ashi_chart", "kagi_chart", "area_chart", "volume_chart", "volume_profile_chart",
     "seasonality_chart", "moving_average_chart", "bollinger_bands_chart", "rsi_chart",
-    "macd_chart", "drawdown_chart", "historical_volatility_chart",
+    "macd_chart", "drawdown_chart", "historical_volatility_chart", "cot_positioning_chart",
 )
 
 # Every visual_type mapped to the data "shape(s)" it's actually suited to represent. Used by
@@ -37,11 +37,17 @@ TICKER_DRIVEN_TYPES = (
 # a clear mismatch rather than a marginal one.
 VISUAL_TYPE_SHAPES = {
     "price_chart": {"single_stat", "multi_period_trend"},
-    "candlestick_chart": {"multi_period_trend"},
+    # candlestick/ohlc/heikin_ashi are the natural pick for a plain "X moved to $Y" story too --
+    # a real chart of recent daily candles is informative even when the story itself doesn't
+    # explicitly use trend language, same reasoning as price_chart/area_chart above. renko/pnf/
+    # kagi stay multi_period_trend-only -- persona.py deliberately scopes those to be rare,
+    # explicitly-technical-framing-only picks, and widening their shape match would work against
+    # that.
+    "candlestick_chart": {"single_stat", "multi_period_trend"},
     "renko_chart": {"multi_period_trend"},
     "pnf_chart": {"multi_period_trend"},
-    "ohlc_chart": {"multi_period_trend"},
-    "heikin_ashi_chart": {"multi_period_trend"},
+    "ohlc_chart": {"single_stat", "multi_period_trend"},
+    "heikin_ashi_chart": {"single_stat", "multi_period_trend"},
     "kagi_chart": {"multi_period_trend"},
     "area_chart": {"single_stat", "multi_period_trend"},
     "volume_chart": {"multi_period_trend"},
@@ -54,6 +60,11 @@ VISUAL_TYPE_SHAPES = {
     "macd_chart": {"multi_period_trend"},
     "drawdown_chart": {"multi_period_trend"},
     "historical_volatility_chart": {"multi_period_trend"},
+    # Includes "single_stat" like price_chart/area_chart -- a positioning story ("funds turn net
+    # short gold") is a single-snapshot claim even though the chart itself shows weekly history,
+    # and COT-specific language ("net short", "flipped", "specs piled in") isn't covered by the
+    # generic multi_period_trend/flow_over_time keyword signals.
+    "cot_positioning_chart": {"multi_period_trend", "flow_over_time", "single_stat"},
     "bar_chart": {"two_point_comparison", "ranked_list"},
     "dumbbell_chart": {"two_point_comparison", "ranked_list"},
     "grouped_bar_chart": {"ranked_list", "two_point_comparison"},
@@ -84,6 +95,14 @@ VISUAL_TYPE_SHAPES = {
 # Shapes considered plausible for virtually any story -- a mismatch is only meaningful when the
 # chosen type ALSO doesn't match any shape actually detected in the story text.
 _UNIVERSAL_SHAPES = frozenset({"single_stat", "photo_subject", "process"})
+
+# "three-week high", "52-week low", "10-day rally" etc. -- a numbered time span, digit or
+# spelled-out, that the plain keyword list in _SHAPE_SIGNALS can't express as a fixed substring.
+_NUMBERED_PERIOD_RE = re.compile(
+    r"\b(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifty[\s-]two)"
+    r"[\s-](?:day|week|month|quarter|year)s?\b",
+    re.IGNORECASE,
+)
 
 _SHAPE_SIGNALS = {
     "multi_period_trend": (
@@ -120,7 +139,9 @@ _SHAPE_SIGNALS = {
         "yield curve", "term structure", "tenor", "maturities", "2s10s", "curve",
     ),
     "flow_over_time": (
-        "inflows", "outflows", "fund flows", "cumulative", "net flows",
+        "inflows", "outflows", "fund flows", "cumulative", "net flows", "net long", "net short",
+        "positioning", "speculators", "specs ", "managed money", "hedge funds", "flipped",
+        "piled into", "unwound",
     ),
     "breakdown": (
         "bridge", "breakdown", "broken down", "made up of", "contributors to", "drivers of",
@@ -475,6 +496,9 @@ def classify_story_shape(story):
     for shape, signals in _SHAPE_SIGNALS.items():
         if any(sig in text for sig in signals):
             shapes.add(shape)
+
+    if _NUMBERED_PERIOD_RE.search(text):
+        shapes.add("multi_period_trend")
 
     # A bare two-number comparison ("X vs Y", "from A to B") without any of the above signals
     # is still a very common story shape, so detect it directly off the raw text_numbers count.

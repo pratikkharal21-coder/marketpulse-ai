@@ -417,6 +417,35 @@ class ShapeMatchTests(unittest.TestCase):
         new_result, warning = verify.check_shape_match(result, story)
         self.assertIsNone(warning)
 
+    # Regression tests for two real stories a live run wrongly blocked: a candlestick chart is
+    # a reasonable pick for a plain "price moved to $X" story even without explicit trend
+    # language (same reasoning already applied to price_chart), and numbered time spans like
+    # "three-week" weren't recognized as trend language at all.
+    def test_candlestick_chart_passes_for_a_plain_price_level_story(self):
+        story = {"title": "Bitcoin zips higher to nearly $64,000 as chip rally and yen strength drive gains", "summary": ""}
+        result = {"visual_type": "candlestick_chart", "ticker": "BTC-USD"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning)
+
+    def test_numbered_time_span_is_recognized_as_a_trend_signal(self):
+        story = {"title": "Bitcoin returns to $64.3K with new three-week BTC price highs imminent", "summary": ""}
+        result = {"visual_type": "candlestick_chart", "ticker": "BTC-USD"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning)
+
+    def test_digit_numbered_time_span_is_recognized(self):
+        shapes = verify.classify_story_shape({"title": "Shares hit a 52-week low", "summary": ""})
+        self.assertIn("multi_period_trend", shapes)
+
+    def test_renko_stays_narrow_despite_widened_siblings(self):
+        # renko/pnf/kagi are deliberately kept multi_period_trend-only (persona.py scopes them
+        # to explicit technical framing) -- the widening applied to candlestick/ohlc/heikin_ashi
+        # must not leak into these.
+        story = {"title": "Bitcoin zips higher to nearly $64,000", "summary": ""}
+        result = {"visual_type": "renko_chart", "ticker": "BTC-USD"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNotNone(warning)
+
 
 class VisualThreadConsistencyTests(unittest.TestCase):
     def test_chart_number_echoed_in_thread_passes(self):

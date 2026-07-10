@@ -105,5 +105,62 @@ class TechnicalChartTests(unittest.TestCase):
             self.assertIsNone(chart.generate_macd_chart("TEST"))
 
 
+def _synthetic_cot_rows(n=10):
+    """Newest-first, matching the real CFTC Socrata API's actual field names and ordering."""
+    rows = []
+    for i in range(n):
+        rows.append({
+            "report_date_as_yyyy_mm_dd": f"2026-{7 - i // 4:02d}-{(28 - (i % 4) * 7):02d}T00:00:00.000",
+            "noncomm_positions_long_all": str(200000 + i * 1000),
+            "noncomm_positions_short_all": str(30000 - i * 200),
+            "comm_positions_long_all": str(60000),
+            "comm_positions_short_all": str(270000),
+            "open_interest_all": str(350000 + i * 500),
+        })
+    return rows
+
+
+class COTPositioningChartTests(unittest.TestCase):
+    def test_renders_for_a_mapped_ticker_with_real_math(self):
+        rows = _synthetic_cot_rows()
+        with patch("chart._fetch_cot_history", return_value=list(reversed(rows))):
+            stats = {}
+            img = chart.generate_cot_positioning_chart("GC=F", label="Gold", stats_out=stats)
+        self.assertIsNotNone(img)
+        expected_net = int(rows[0]["noncomm_positions_long_all"]) - int(rows[0]["noncomm_positions_short_all"])
+        self.assertEqual(stats["net_speculative_position"], expected_net)
+        self.assertEqual(stats["source"], "cftc_cot")
+        self.assertEqual(stats["cftc_market_name"], chart.COT_MARKET_NAMES["GC=F"])
+
+    def test_unmapped_ticker_returns_none(self):
+        self.assertIsNone(chart.generate_cot_positioning_chart("AAPL"))
+
+    def test_no_ticker_returns_none(self):
+        self.assertIsNone(chart.generate_cot_positioning_chart(None))
+
+    def test_fetch_failure_returns_none_not_a_crash(self):
+        with patch("chart._fetch_cot_history", side_effect=TimeoutError("simulated network failure")):
+            self.assertIsNone(chart.generate_cot_positioning_chart("GC=F"))
+
+    def test_too_few_rows_returns_none(self):
+        with patch("chart._fetch_cot_history", return_value=_synthetic_cot_rows(n=2)):
+            self.assertIsNone(chart.generate_cot_positioning_chart("GC=F"))
+
+    def test_malformed_row_returns_none_not_a_crash(self):
+        broken_rows = [{"report_date_as_yyyy_mm_dd": "2026-07-01T00:00:00.000"}] * 6  # missing fields
+        with patch("chart._fetch_cot_history", return_value=broken_rows):
+            self.assertIsNone(chart.generate_cot_positioning_chart("GC=F"))
+
+    def test_dispatches_through_resolve_visual(self):
+        with patch("chart._fetch_cot_history", return_value=list(reversed(_synthetic_cot_rows()))):
+            result = {"visual_type": "cot_positioning_chart", "ticker": "EURUSD=X"}
+            img = chart.resolve_visual(result, label="Euro")
+        self.assertIsNotNone(img)
+
+    def test_every_curated_ticker_has_a_distinct_market_name(self):
+        names = list(chart.COT_MARKET_NAMES.values())
+        self.assertEqual(len(names), len(set(names)), "duplicate CFTC market name mapped from two tickers")
+
+
 if __name__ == "__main__":
     unittest.main()

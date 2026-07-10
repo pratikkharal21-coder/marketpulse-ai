@@ -13,6 +13,13 @@ def _require(name):
     return value
 
 
+def _flag(name, default=True):
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in ("0", "false", "no", "off")
+
+
 GROQ_API_KEY = _require("GROQ_API_KEY")
 GMAIL_ADDRESS = _require("GMAIL_ADDRESS")
 GMAIL_APP_PASSWORD = _require("GMAIL_APP_PASSWORD")
@@ -26,6 +33,11 @@ MAX_SHORT_THREADS = int(os.environ.get("MAX_SHORT_THREADS", "5"))
 MAX_LONGFORM_STORIES = int(os.environ.get("MAX_LONGFORM_STORIES", "2"))
 LOOKBACK_HOURS = int(os.environ.get("LOOKBACK_HOURS", "8"))
 REGEN_THRESHOLD = int(os.environ.get("REGEN_THRESHOLD", "6"))
+
+# Per-module toggles so each upgrade can be disabled independently without touching code.
+# All default on; set e.g. CONTENT_ENGINE_ENABLED=false in .env to turn one off.
+CONTENT_ENGINE_ENABLED = _flag("CONTENT_ENGINE_ENABLED", True)
+ENGAGEMENT_SCORING_ENABLED = _flag("ENGAGEMENT_SCORING_ENABLED", True)
 
 BASE_DIR = Path(__file__).parent
 STATE_PATH = BASE_DIR / "state.json"

@@ -24,7 +24,8 @@ SPEC_DRIVEN_FIELDS = (
 TICKER_DRIVEN_TYPES = (
     "price_chart", "candlestick_chart", "renko_chart", "pnf_chart", "ohlc_chart",
     "heikin_ashi_chart", "kagi_chart", "area_chart", "volume_chart", "volume_profile_chart",
-    "seasonality_chart",
+    "seasonality_chart", "moving_average_chart", "bollinger_bands_chart", "rsi_chart",
+    "macd_chart", "drawdown_chart", "historical_volatility_chart",
 )
 
 # Every visual_type mapped to the data "shape(s)" it's actually suited to represent. Used by
@@ -47,6 +48,12 @@ VISUAL_TYPE_SHAPES = {
     "volume_profile_chart": {"multi_period_trend"},
     "yield_curve_chart": {"macro_curve"},
     "seasonality_chart": {"multi_period_trend"},
+    "moving_average_chart": {"multi_period_trend"},
+    "bollinger_bands_chart": {"multi_period_trend"},
+    "rsi_chart": {"multi_period_trend"},
+    "macd_chart": {"multi_period_trend"},
+    "drawdown_chart": {"multi_period_trend"},
+    "historical_volatility_chart": {"multi_period_trend"},
     "bar_chart": {"two_point_comparison", "ranked_list"},
     "dumbbell_chart": {"two_point_comparison", "ranked_list"},
     "grouped_bar_chart": {"ranked_list", "two_point_comparison"},
@@ -158,6 +165,16 @@ _DRAMATIC_VERB_RE = re.compile(
     re.IGNORECASE,
 )
 DRAMATIC_VERB_THRESHOLD_PCT = 2.0
+
+# Unconditionally banned filler phrases -- generic hedge-words that could apply to any story on
+# any day and add no information. "eyes on"/"in focus" get a narrower rule below since they're
+# only filler when NOT anchored to a specific level/event.
+_UNCONDITIONAL_FILLER_RE = re.compile(
+    r"\b(amid|as investors digest|uncertainty looms)\b", re.IGNORECASE,
+)
+_CONDITIONAL_FILLER_RE = re.compile(r"\b(eyes on|in focus)\b", re.IGNORECASE)
+_HASHTAG_RE = re.compile(r"#\w+")
+MAX_CLOSING_HASHTAGS = 2
 
 _PERIOD_TOKEN_RE = re.compile(r"\bQ[1-4]\b|\bFY\s?\d{2,4}\b|\b20\d{2}\b", re.IGNORECASE)
 
@@ -674,6 +691,55 @@ def check_bare_numbers(thread_lines):
     return warnings
 
 
+_TWEET_PREFIX_RE = re.compile(r"^\d+/\d+\s+")
+
+
+def check_banned_filler(thread_lines):
+    """Hard block on generic hedge-phrases that could apply to any story on any day and add no
+    information ('amid', 'as investors digest', 'uncertainty looms'), plus 'eyes on'/'in focus'
+    specifically when NOT anchored to a concrete level or date -- deterministic string matching,
+    not a fuzzy heuristic, so this is enforced as a hard block rather than an advisory warning.
+    Returns (ok, reason_or_None)."""
+    for line in thread_lines:
+        m = _UNCONDITIONAL_FILLER_RE.search(line)
+        if m:
+            return False, f"banned filler phrase '{m.group(0)}' in: {line[:80]}"
+
+        m = _CONDITIONAL_FILLER_RE.search(line)
+        if m:
+            # Strip the leading "N/TOTAL " tweet-number prefix first -- otherwise every tweet
+            # trivially "has a number" from its own numbering and this check never fires.
+            body = _TWEET_PREFIX_RE.sub("", line)
+            if not _extract_text_numbers(body) and not _PERIOD_TOKEN_RE.search(body):
+                return False, f"'{m.group(0)}' used with no concrete level/date attached in: {line[:80]}"
+
+    return True, None
+
+
+def check_hashtag_discipline(thread_lines):
+    """Hard block: the first tweet must have zero hashtags (a hashtag-led opener reads as spam,
+    not a data claim), the last tweet may use at most MAX_CLOSING_HASHTAGS, and no tweet in
+    between may use any. Deterministic counting, not a heuristic. Returns (ok, reason_or_None)."""
+    if not thread_lines:
+        return True, None
+
+    first_tags = _HASHTAG_RE.findall(thread_lines[0])
+    if first_tags:
+        return False, f"first tweet must have zero hashtags, found {first_tags}"
+
+    for line in thread_lines[1:-1]:
+        tags = _HASHTAG_RE.findall(line)
+        if tags:
+            return False, f"only the closing tweet may use hashtags, found {tags} in: {line[:80]}"
+
+    if len(thread_lines) > 1:
+        last_tags = _HASHTAG_RE.findall(thread_lines[-1])
+        if len(last_tags) > MAX_CLOSING_HASHTAGS:
+            return False, f"closing tweet has {len(last_tags)} hashtags, max is {MAX_CLOSING_HASHTAGS}: {last_tags}"
+
+    return True, None
+
+
 def build_provenance(story, chart_stats=None, visual_warnings=None, advisory_warnings=None):
     """A retained-but-not-necessarily-shown record of what free source(s) backed this piece
     of content and when, so any future error can be traced back and audited. `visual_warnings`
@@ -696,6 +762,23 @@ def build_provenance(story, chart_stats=None, visual_warnings=None, advisory_war
     if advisory_warnings:
         provenance["warnings"].extend(advisory_warnings)
     return provenance
+
+
+def rank_by_engagement(items):
+    """Orders published items by a composite score built from the self-reported
+    expected_engagement (surprise/shareability), market_significance (magnitude), and relevance
+    (audience breadth) fields every item already carries -- a re-ordering of what generation
+    already produced, never a reason to include or exclude anything. Note this is a heuristic
+    proxy from the model's own self-assessment, not measured real-world X engagement data (no
+    free source for that exists) -- it's the same honest limitation as the rest of this
+    pipeline's self-reported confidence scores. Returns a new sorted list, highest first."""
+    def score(item):
+        return (
+            item.get("expected_engagement", 0) * 0.4
+            + item.get("market_significance", 0) * 0.35
+            + item.get("relevance", 0) * 0.25
+        )
+    return sorted(items, key=score, reverse=True)
 
 
 def log_provenance(items):

@@ -4,7 +4,14 @@ import config
 import verify
 from ai_client import call_for_json
 from chart import resolve_visual
-from persona import ENGAGEMENT_GUIDELINES, HOOK_SHAPE_TAXONOMY, PERSONA, VALUE_GUIDELINES, VISUAL_GUIDELINES
+from persona import (
+    CONTENT_QUALITY_GUIDELINES,
+    ENGAGEMENT_GUIDELINES,
+    HOOK_SHAPE_TAXONOMY,
+    PERSONA,
+    VALUE_GUIDELINES,
+    VISUAL_GUIDELINES,
+)
 from regen import maybe_regenerate
 
 logger = logging.getLogger("marketpulse.longform")
@@ -15,8 +22,10 @@ SYSTEM_PROMPT = (
 
 Write a deep-dive X/Twitter thread (8-10 tweets) on one major financial/market story — going far \
 beyond a quick take. Structure:
-1. Hook tweet — this is the single most important tweet for getting someone to open the thread —
-make it count. See the hook shape taxonomy below for how to pick and vary it.
+1. Hook tweet — the single most surprising or important data point in the story, stated as a \
+specific claim, not a question or flat headline restatement. This is the highest-leverage tweet \
+for getting someone to open the thread — make it count. See the hook shape taxonomy below for \
+how to pick and vary it.
 2. Context — why this matters right now, including at least one historical comparison (a past \
 similar event, cycle, or precedent) to anchor the analysis.
 3. Concrete data — specific numbers and recent developments, and where relevant, probabilities \
@@ -28,9 +37,10 @@ which will happen.
 6. If the story involves politics, policy, elections, or geopolitics, discuss it ONLY through its \
 financial/market impact. Do not state or imply any political opinion — stay strictly neutral and \
 non-partisan.
-7. Close with a "What to watch next:" line naming specific upcoming dates, data releases, or \
-catalysts to monitor, followed directly by a question asking readers which scenario (from step 4) \
-they find more likely, or what they're watching that wasn't covered.
+7. Close with a "What to watch next:" line naming 3-5 dated catalysts (specific upcoming dates, \
+data releases, CB meetings, earnings, expiries, or technical levels), followed directly by a \
+question asking readers which scenario (from step 4) they find more likely, or what they're \
+watching that wasn't covered.
 
 Where the story supports it, structure ONE tweet in this thread as a saveable reference: a short \
 numbered framework (e.g. "3 things that determine X: 1) ... 2) ... 3) ..."), a dated "what to \
@@ -44,6 +54,8 @@ support a structure like this, skip it entirely; not every deep dive needs one.
     + HOOK_SHAPE_TAXONOMY
     + "\n\n"
     + VALUE_GUIDELINES
+    + "\n\n"
+    + CONTENT_QUALITY_GUIDELINES
     + "\n\n"
     + ENGAGEMENT_GUIDELINES
     + "\n\n"
@@ -64,9 +76,9 @@ use to quote-post this thread later — a different angle than the thread itself
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 {"thread": ["1/9 ...", "2/9 ...", ...], \
 "hook_shape": "number_led"|"contrarian"|"stakes"|"question"|"surprising_fact", \
-"visual_type": "price_chart"|"candlestick_chart"|"renko_chart"|"pnf_chart"|"ohlc_chart"|"heikin_ashi_chart"|"kagi_chart"|"area_chart"|"volume_chart"|"volume_profile_chart"|"yield_curve_chart"|"seasonality_chart"|"bar_chart"|"dumbbell_chart"|"grouped_bar_chart"|"stacked_bar_chart"|"waterfall_chart"|"slope_chart"|"bullet_chart"|"pie_chart"|"donut_chart"|"treemap_chart"|"histogram"|"box_plot"|"violin_plot"|"scatter_chart"|"bubble_chart"|"correlation_matrix_chart"|"regression_chart"|"trend_chart"|"term_structure_chart"|"spread_chart"|"zscore_chart"|"cumulative_flow_chart"|"flowchart"|"real_world_image"|"custom_stat_visual"|"none", \
+"visual_type": "price_chart"|"candlestick_chart"|"renko_chart"|"pnf_chart"|"ohlc_chart"|"heikin_ashi_chart"|"kagi_chart"|"area_chart"|"volume_chart"|"volume_profile_chart"|"yield_curve_chart"|"seasonality_chart"|"moving_average_chart"|"bollinger_bands_chart"|"rsi_chart"|"macd_chart"|"drawdown_chart"|"historical_volatility_chart"|"bar_chart"|"dumbbell_chart"|"grouped_bar_chart"|"stacked_bar_chart"|"waterfall_chart"|"slope_chart"|"bullet_chart"|"pie_chart"|"donut_chart"|"treemap_chart"|"histogram"|"box_plot"|"violin_plot"|"scatter_chart"|"bubble_chart"|"correlation_matrix_chart"|"regression_chart"|"trend_chart"|"term_structure_chart"|"spread_chart"|"zscore_chart"|"cumulative_flow_chart"|"flowchart"|"real_world_image"|"custom_stat_visual"|"none", \
 "visual_confidence": 0-10 (how confidently the chosen visual_type's DATA SHAPE fits this story; a low score drops the visual even if visual_type is set), \
-"ticker": "AAPL" or null (used by price_chart, candlestick_chart, renko_chart, pnf_chart, ohlc_chart, heikin_ashi_chart, kagi_chart, area_chart, volume_chart, volume_profile_chart, seasonality_chart), \
+"ticker": "AAPL" or null (used by price_chart, candlestick_chart, renko_chart, pnf_chart, ohlc_chart, heikin_ashi_chart, kagi_chart, area_chart, volume_chart, volume_profile_chart, seasonality_chart, moving_average_chart, bollinger_bands_chart, rsi_chart, macd_chart, drawdown_chart, historical_volatility_chart), \
 "bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "...", "orientation": "vertical"|"horizontal"} or null, \
 "dumbbell_chart": {"title": "...", "labels": [...], "start_values": [...], "end_values": [...], "start_label": "...", "end_label": "...", "unit": "..."} or null, \
 "grouped_bar_chart": {"title": "...", "labels": [...], "series": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
@@ -138,7 +150,8 @@ def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=No
 
         thread = [t for t in result.get("thread", []) if t]
         if not thread:
-            return None
+            logger.warning("Story '%s': model produced no usable thread text", story["title"])
+            return None, "empty_thread"
 
         # Grounding text must match exactly what the model was shown -- not the full (possibly
         # longer) feed summary -- otherwise a "grounded" number could really just be a number
@@ -148,7 +161,18 @@ def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=No
         ok, reason = verify.check_causal_claims(thread, grounding_story)
         if not ok:
             logger.warning("Blocked story '%s': %s", story["title"], reason)
-            return None
+            return None, "blocked_causal_claim"
+
+        if config.CONTENT_ENGINE_ENABLED:
+            ok, reason = verify.check_banned_filler(thread)
+            if not ok:
+                logger.warning("Blocked story '%s': %s", story["title"], reason)
+                return None, "blocked_banned_filler"
+
+            ok, reason = verify.check_hashtag_discipline(thread)
+            if not ok:
+                logger.warning("Blocked story '%s': %s", story["title"], reason)
+                return None, "blocked_hashtag_discipline"
 
         result, visual_warnings = verify.select_visual(result, grounding_story, thread, used_visuals)
 
@@ -158,7 +182,7 @@ def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=No
         ok, reason = verify.verify_ticker_direction(thread, chart_stats)
         if not ok:
             logger.warning("Blocked story '%s': %s", story["title"], reason)
-            return None
+            return None, "blocked_direction_mismatch"
 
         advisory_warnings = verify.check_bare_numbers(thread) + verify.check_verb_intensity(thread, chart_stats)
         provenance = verify.build_provenance(story, chart_stats, visual_warnings, advisory_warnings)
@@ -183,26 +207,50 @@ def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=No
             "story_link": story["link"],
             "story_source": story["source"],
             "provenance": provenance,
-        }
+        }, None
     except Exception as exc:
         logger.error("Long-form generation failed for story '%s': %s", story["title"], exc)
-        return None
+        return None, "generation_error"
 
 
 def generate_top_longform(stories, used_hooks=None, slot_framing=None, used_visuals=None):
+    """Attempts candidates in triage-ranked order and BACKFILLS from the rest of `stories` (not
+    just the top MAX_LONGFORM_STORIES) whenever one is skipped, blocked, or fails to generate.
+    Returns (items, used_links) -- used_links is the set of story links that ended up
+    published, for seen-tracking and to keep short threads from covering the same story."""
     if used_hooks is None:
         used_hooks = []
     if used_visuals is None:
         used_visuals = []
+
     items = []
-    for story in stories[: config.MAX_LONGFORM_STORIES]:
-        longform = generate_longform(story, used_hooks, slot_framing, used_visuals)
+    used_links = set()
+    reason_counts = {}
+    attempted = 0
+
+    for story in stories:
+        if len(items) >= config.MAX_LONGFORM_STORIES:
+            break
+
+        attempted += 1
+        longform, reason = generate_longform(story, used_hooks, slot_framing, used_visuals)
         if longform:
             items.append(longform)
+            used_links.add(story["link"])
             if longform.get("hook_shape"):
                 used_hooks.append(longform["hook_shape"])
             vt = longform.get("visual_type")
             if vt and vt != "none":
                 used_visuals.append(vt)
-    logger.info("Generated %d deep-dive thread(s) from %d candidate stories", len(items), len(stories))
-    return items
+        else:
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+    if reason_counts:
+        breakdown = ", ".join(f"{count} {reason}" for reason, count in sorted(reason_counts.items()))
+        logger.info(
+            "Deep dives: %d/%d candidates tried -> %d published (skipped: %s)",
+            attempted, len(stories), len(items), breakdown,
+        )
+    else:
+        logger.info("Deep dives: %d/%d candidates tried -> %d published, no skips", attempted, len(stories), len(items))
+    return items, used_links

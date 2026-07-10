@@ -649,6 +649,282 @@ def generate_seasonality_chart(ticker, label=None, years=5, stats_out=None):
     return _save_fig(fig)
 
 
+def generate_moving_average_chart(ticker, label=None, stats_out=None):
+    if not ticker:
+        return None
+
+    ticker = ticker.strip().replace("/", "").replace(" ", "")
+    data = _fetch_daily_history(ticker, period="1y")
+    if data is None or len(data) < 55:
+        logger.warning("Not enough daily history for moving-average chart %s", ticker)
+        return None
+
+    closes = data["Close"]
+    ma20 = closes.rolling(window=20).mean()
+    ma50 = closes.rolling(window=50).mean()
+    first_price, last_price = float(closes.iloc[0]), float(closes.iloc[-1])
+    pct_change = (last_price - first_price) / first_price * 100
+    color = GREEN if pct_change >= 0 else RED
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.8), dpi=140)
+    ax.plot(closes.index, closes.values, color=color, linewidth=1.5, label="Price")
+    ax.plot(closes.index, ma20.values, color=BLUE, linewidth=1.3, label="20-day MA")
+    ax.plot(closes.index, ma50.values, color=AMBER, linewidth=1.3, label="50-day MA")
+
+    title = _wrap_title(label or ticker, width=42)
+    ax.set_title(f"{title}\n{last_price:,.2f}", fontsize=13, fontweight="bold", loc="left", color="#1a1a1a")
+    ax.legend(loc="best", fontsize=8.5, frameon=False)
+
+    locator = mdates.AutoDateLocator(minticks=4, maxticks=7)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data, {
+            "ma20": float(ma20.iloc[-1]), "ma50": float(ma50.iloc[-1]),
+        }))
+    return _save_fig(fig)
+
+
+def generate_bollinger_bands_chart(ticker, label=None, stats_out=None):
+    if not ticker:
+        return None
+
+    ticker = ticker.strip().replace("/", "").replace(" ", "")
+    data = _fetch_daily_history(ticker, period="6mo")
+    if data is None or len(data) < 25:
+        logger.warning("Not enough daily history for Bollinger Bands chart %s", ticker)
+        return None
+
+    closes = data["Close"]
+    sma20 = closes.rolling(window=20).mean()
+    std20 = closes.rolling(window=20).std()
+    upper = sma20 + 2 * std20
+    lower = sma20 - 2 * std20
+    first_price, last_price = float(closes.iloc[0]), float(closes.iloc[-1])
+    pct_change = (last_price - first_price) / first_price * 100
+    color = GREEN if pct_change >= 0 else RED
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.8), dpi=140)
+    ax.fill_between(closes.index, lower.values, upper.values, color=BLUE, alpha=0.10, label="20d ±2σ")
+    ax.plot(closes.index, upper.values, color=BLUE, linewidth=0.9, linestyle="--")
+    ax.plot(closes.index, lower.values, color=BLUE, linewidth=0.9, linestyle="--")
+    ax.plot(closes.index, sma20.values, color=AMBER, linewidth=1.2, label="20-day MA")
+    ax.plot(closes.index, closes.values, color=color, linewidth=1.6, label="Price")
+
+    title = _wrap_title(label or ticker, width=42)
+    ax.set_title(f"{title}\n{last_price:,.2f}", fontsize=13, fontweight="bold", loc="left", color="#1a1a1a")
+    ax.legend(loc="best", fontsize=8.5, frameon=False)
+
+    locator = mdates.AutoDateLocator(minticks=4, maxticks=7)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    if stats_out is not None:
+        band_width_pct = float((upper.iloc[-1] - lower.iloc[-1]) / sma20.iloc[-1] * 100) if sma20.iloc[-1] else None
+        stats_out.update(_ticker_stats(ticker, data, {
+            "upper_band": float(upper.iloc[-1]), "lower_band": float(lower.iloc[-1]), "band_width_pct": band_width_pct,
+        }))
+    return _save_fig(fig)
+
+
+def generate_rsi_chart(ticker, label=None, stats_out=None):
+    if not ticker:
+        return None
+
+    ticker = ticker.strip().replace("/", "").replace(" ", "")
+    data = _fetch_daily_history(ticker, period="6mo")
+    if data is None or len(data) < 20:
+        logger.warning("Not enough daily history for RSI chart %s", ticker)
+        return None
+
+    closes = data["Close"]
+    delta = closes.diff()
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100 - (100 / (1 + rs))
+    rsi = rsi.fillna(100)  # avg_loss of 0 means pure gains -> RSI 100, not NaN
+    last_rsi = float(rsi.iloc[-1])
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.2), dpi=140)
+    ax.plot(rsi.index, rsi.values, color=BLUE, linewidth=1.6)
+    ax.axhline(70, color=RED, linewidth=0.8, linestyle="--")
+    ax.axhline(30, color=GREEN, linewidth=0.8, linestyle="--")
+    ax.fill_between(rsi.index, 70, 100, color=RED, alpha=0.05)
+    ax.fill_between(rsi.index, 0, 30, color=GREEN, alpha=0.05)
+    ax.set_ylim(0, 100)
+
+    title = _wrap_title(label or ticker, width=42)
+    ax.set_title(f"{title}\nRSI(14): {last_rsi:.0f}", fontsize=13, fontweight="bold", loc="left", color="#1a1a1a")
+
+    locator = mdates.AutoDateLocator(minticks=4, maxticks=7)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data, {"rsi_14": last_rsi}))
+    return _save_fig(fig)
+
+
+def generate_macd_chart(ticker, label=None, stats_out=None):
+    if not ticker:
+        return None
+
+    ticker = ticker.strip().replace("/", "").replace(" ", "")
+    data = _fetch_daily_history(ticker, period="1y")
+    if data is None or len(data) < 35:
+        logger.warning("Not enough daily history for MACD chart %s", ticker)
+        return None
+
+    closes = data["Close"]
+    ema12 = closes.ewm(span=12, adjust=False).mean()
+    ema26 = closes.ewm(span=26, adjust=False).mean()
+    macd_line = ema12 - ema26
+    signal_line = macd_line.ewm(span=9, adjust=False).mean()
+    histogram = macd_line - signal_line
+    hist_colors = [GREEN if v >= 0 else RED for v in histogram.values]
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.4), dpi=140)
+    ax.bar(histogram.index, histogram.values, color=hist_colors, width=1.0, alpha=0.5)
+    ax.plot(macd_line.index, macd_line.values, color=BLUE, linewidth=1.4, label="MACD")
+    ax.plot(signal_line.index, signal_line.values, color=AMBER, linewidth=1.2, label="Signal")
+    ax.axhline(0, color="#999999", linewidth=0.8)
+
+    title = _wrap_title(label or ticker, width=42)
+    ax.set_title(f"{title}\nMACD(12,26,9)", fontsize=13, fontweight="bold", loc="left", color="#1a1a1a")
+    ax.legend(loc="best", fontsize=8.5, frameon=False)
+
+    locator = mdates.AutoDateLocator(minticks=4, maxticks=7)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data, {
+            "macd": float(macd_line.iloc[-1]), "signal": float(signal_line.iloc[-1]), "histogram": float(histogram.iloc[-1]),
+        }))
+    return _save_fig(fig)
+
+
+def generate_drawdown_chart(ticker, label=None, stats_out=None):
+    if not ticker:
+        return None
+
+    ticker = ticker.strip().replace("/", "").replace(" ", "")
+    data = _fetch_daily_history(ticker, period="1y")
+    if data is None or len(data) < 10:
+        logger.warning("Not enough daily history for drawdown chart %s", ticker)
+        return None
+
+    closes = data["Close"]
+    running_max = closes.cummax()
+    drawdown = (closes / running_max - 1) * 100
+    max_drawdown = float(drawdown.min())
+    current_drawdown = float(drawdown.iloc[-1])
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.4), dpi=140)
+    ax.fill_between(drawdown.index, drawdown.values, 0, color=RED, alpha=0.25)
+    ax.plot(drawdown.index, drawdown.values, color=RED, linewidth=1.2)
+    ax.axhline(0, color="#999999", linewidth=0.8)
+
+    title = _wrap_title(label or ticker, width=42)
+    ax.set_title(
+        f"{title}\nDrawdown from 52-week high: {current_drawdown:.1f}% (max {max_drawdown:.1f}%)",
+        fontsize=12, fontweight="bold", loc="left", color="#1a1a1a",
+    )
+
+    locator = mdates.AutoDateLocator(minticks=4, maxticks=7)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data, {
+            "current_drawdown_pct": current_drawdown, "max_drawdown_pct": max_drawdown,
+        }))
+    return _save_fig(fig)
+
+
+def generate_historical_volatility_chart(ticker, label=None, stats_out=None):
+    if not ticker:
+        return None
+
+    ticker = ticker.strip().replace("/", "").replace(" ", "")
+    data = _fetch_daily_history(ticker, period="1y")
+    if data is None or len(data) < 25:
+        logger.warning("Not enough daily history for historical volatility chart %s", ticker)
+        return None
+
+    closes = data["Close"]
+    log_returns = np.log(closes / closes.shift(1))
+    rolling_vol = log_returns.rolling(window=20).std() * np.sqrt(252) * 100
+    last_vol = float(rolling_vol.iloc[-1])
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.4), dpi=140)
+    ax.plot(rolling_vol.index, rolling_vol.values, color=PURPLE, linewidth=1.6)
+    ax.fill_between(rolling_vol.index, rolling_vol.values, 0, color=PURPLE, alpha=0.10)
+
+    title = _wrap_title(label or ticker, width=42)
+    ax.set_title(f"{title}\n20-day realized vol (annualized): {last_vol:.1f}%", fontsize=12.5, fontweight="bold", loc="left", color="#1a1a1a")
+
+    locator = mdates.AutoDateLocator(minticks=4, maxticks=7)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update(_ticker_stats(ticker, data, {"realized_vol_20d_annualized_pct": last_vol}))
+    return _save_fig(fig)
+
+
 def _caption_image(image_bytes, title):
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -1964,6 +2240,18 @@ def resolve_visual(result, label=None, stats_out=None, source=None):
         return generate_yield_curve_chart(label=label, stats_out=stats_out)
     if visual_type == "seasonality_chart":
         return generate_seasonality_chart(result.get("ticker"), label=label, stats_out=stats_out)
+    if visual_type == "moving_average_chart":
+        return generate_moving_average_chart(result.get("ticker"), label=label, stats_out=stats_out)
+    if visual_type == "bollinger_bands_chart":
+        return generate_bollinger_bands_chart(result.get("ticker"), label=label, stats_out=stats_out)
+    if visual_type == "rsi_chart":
+        return generate_rsi_chart(result.get("ticker"), label=label, stats_out=stats_out)
+    if visual_type == "macd_chart":
+        return generate_macd_chart(result.get("ticker"), label=label, stats_out=stats_out)
+    if visual_type == "drawdown_chart":
+        return generate_drawdown_chart(result.get("ticker"), label=label, stats_out=stats_out)
+    if visual_type == "historical_volatility_chart":
+        return generate_historical_volatility_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "dumbbell_chart":
         return generate_dumbbell_chart(result.get("dumbbell_chart"))
     if visual_type == "grouped_bar_chart":

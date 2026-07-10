@@ -254,6 +254,85 @@ class BareNumberTests(unittest.TestCase):
         self.assertFalse(warnings)
 
 
+class BannedFillerTests(unittest.TestCase):
+    def test_unconditional_filler_is_blocked(self):
+        for phrase in ["amid ongoing volatility", "as investors digest the news", "uncertainty looms over markets"]:
+            with self.subTest(phrase=phrase):
+                ok, reason = verify.check_banned_filler([f"1/1 Stocks fell {phrase}."])
+                self.assertFalse(ok)
+                self.assertIsNotNone(reason)
+
+    def test_eyes_on_without_a_level_is_blocked(self):
+        ok, reason = verify.check_banned_filler(["1/1 Eyes on the Fed this week."])
+        self.assertFalse(ok)
+
+    def test_eyes_on_with_a_level_is_allowed(self):
+        ok, reason = verify.check_banned_filler(["1/1 Eyes on the 4.65% level for the 10-year."])
+        self.assertTrue(ok, reason)
+
+    def test_eyes_on_with_a_date_is_allowed(self):
+        ok, reason = verify.check_banned_filler(["1/1 Eyes on the Q2 print due Thursday."])
+        self.assertTrue(ok, reason)
+
+    def test_clean_thread_passes(self):
+        ok, reason = verify.check_banned_filler(["1/1 The Fed cut rates to 4.50% from 4.75%."])
+        self.assertTrue(ok, reason)
+
+
+class HashtagDisciplineTests(unittest.TestCase):
+    def test_first_tweet_with_hashtag_is_blocked(self):
+        ok, reason = verify.check_hashtag_discipline(["1/2 #Fed cuts rates today.", "2/2 Watch next week."])
+        self.assertFalse(ok)
+
+    def test_middle_tweet_with_hashtag_is_blocked(self):
+        ok, reason = verify.check_hashtag_discipline([
+            "1/3 Fed cuts rates to 4.50%.", "2/3 This #matters for markets.", "3/3 Watch next week.",
+        ])
+        self.assertFalse(ok)
+
+    def test_closing_tweet_within_limit_passes(self):
+        ok, reason = verify.check_hashtag_discipline([
+            "1/2 Fed cuts rates to 4.50% from 4.75%.", "2/2 Watch the Jul 30 meeting. #Fed #CPI",
+        ])
+        self.assertTrue(ok, reason)
+
+    def test_closing_tweet_over_limit_is_blocked(self):
+        ok, reason = verify.check_hashtag_discipline([
+            "1/2 Fed cuts rates to 4.50% from 4.75%.", "2/2 Watch next week. #Fed #CPI #Markets",
+        ])
+        self.assertFalse(ok)
+
+    def test_no_hashtags_at_all_passes(self):
+        ok, reason = verify.check_hashtag_discipline(["1/2 Fed cuts rates.", "2/2 Watch next week."])
+        self.assertTrue(ok, reason)
+
+    def test_empty_thread_is_a_noop(self):
+        ok, reason = verify.check_hashtag_discipline([])
+        self.assertTrue(ok, reason)
+
+
+class RankByEngagementTests(unittest.TestCase):
+    def test_sorts_descending_by_composite_score(self):
+        items = [
+            {"story_title": "low", "expected_engagement": 3, "market_significance": 3, "relevance": 3},
+            {"story_title": "high", "expected_engagement": 9, "market_significance": 9, "relevance": 9},
+            {"story_title": "mid", "expected_engagement": 6, "market_significance": 6, "relevance": 6},
+        ]
+        ranked = verify.rank_by_engagement(items)
+        self.assertEqual([i["story_title"] for i in ranked], ["high", "mid", "low"])
+
+    def test_missing_fields_default_to_zero_not_error(self):
+        items = [{"story_title": "a"}, {"story_title": "b", "expected_engagement": 5}]
+        ranked = verify.rank_by_engagement(items)
+        self.assertEqual(ranked[0]["story_title"], "b")
+
+    def test_does_not_mutate_or_drop_items(self):
+        items = [{"story_title": "a", "relevance": 1}, {"story_title": "b", "relevance": 9}]
+        ranked = verify.rank_by_engagement(items)
+        self.assertEqual(len(ranked), 2)
+        self.assertEqual({i["story_title"] for i in ranked}, {"a", "b"})
+
+
 class ProvenanceTests(unittest.TestCase):
     def test_provenance_shape(self):
         story = {"source": "markets", "link": "http://x.test/1", "published": "2026-01-01T00:00:00+00:00"}

@@ -25,8 +25,11 @@ def send(subject, html_body, inline_images=None):
 
     for cid, image_bytes in (inline_images or {}).items():
         image = MIMEImage(image_bytes)
+        # MIMEImage already sniffs the real subtype (png/jpeg/...) from the bytes for
+        # Content-Type; match the filename extension to it too instead of hardcoding .png --
+        # the real_world_image visual is a JPEG, so it was previously mislabeled.
         image.add_header("Content-ID", f"<{cid}>")
-        image.add_header("Content-Disposition", "inline", filename=f"{cid}.png")
+        image.add_header("Content-Disposition", "inline", filename=f"{cid}.{image.get_content_subtype()}")
         message.attach(image)
 
     context = ssl.create_default_context()

@@ -1,4 +1,5 @@
 import logging
+import traceback
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -85,7 +86,11 @@ def run():
 
     survivors = triage.triage(new_items)
     if not survivors:
-        logger.info("No stories survived triage. Sending empty-digest notice and exiting.")
+        logger.info(
+            "No stories survived triage (%d raw items, %d unseen). Sending empty-digest notice "
+            "and exiting -- this is expected on a genuinely quiet news window, not necessarily a bug.",
+            len(raw_items), len(new_items),
+        )
         report_html, inline_images = report.render([], 0, [])
         mailer.send(f"MarketPulse AI — no high-impact stories ({_now_str()})", report_html, inline_images)
         state.save(st)
@@ -95,11 +100,40 @@ def run():
     # Seeded with the last few posts' visual types across PRIOR runs too, not just this run's
     # batch, so "don't repeat the same visual type back-to-back" holds across scheduled runs.
     used_visuals = state.get_recent_visuals(st)
-    threads = generate.generate_short_threads(survivors, used_hooks, slot_framing, used_visuals)
-    deep_dives = longform.generate_top_longform(survivors, used_hooks, slot_framing, used_visuals)
+
+    # Deep dives get first pick of the truly top-ranked stories; short threads then draw from
+    # the remaining candidates so the same story never covers both a quick take AND a deep dive
+    # in the same digest. Both generators backfill from the full candidate pool on their own
+    # (see generate.py/longform.py) rather than being capped to a fixed top-N slice, so one
+    # blocked or failed candidate no longer silently shrinks the day's output.
+    deep_dives, deep_dive_links = longform.generate_top_longform(survivors, used_hooks, slot_framing, used_visuals)
+    threads, thread_links = generate.generate_short_threads(
+        survivors, used_hooks, slot_framing, used_visuals, exclude_links=deep_dive_links
+    )
+
+    published_links = thread_links | deep_dive_links
+    logger.info(
+        "Output summary: %d triage survivor(s) -> %d published (%d thread(s) + %d deep dive(s)). "
+        "%d candidate(s) unused this run (available for a future run if still within the "
+        "lookback window).",
+        len(survivors), len(published_links), len(threads), len(deep_dives),
+        len(survivors) - len(published_links),
+    )
+    if len(threads) < 3:
+        logger.info(
+            "Thread count below the usual 3-5 target -- check the 'skipped' breakdown above in "
+            "the Short threads / Deep dives log lines to tell a quiet news day (few triage "
+            "survivors) from a quality-filtering day (many blocked_* / generation_error) apart."
+        )
 
     verify.log_provenance(threads)
     verify.log_provenance(deep_dives)
+
+    # Reorders (never adds/removes) so the most screenshot-worthy items lead the digest --
+    # composite of the model's own self-reported engagement/significance/relevance scores.
+    if config.ENGAGEMENT_SCORING_ENABLED:
+        threads = verify.rank_by_engagement(threads)
+        deep_dives = verify.rank_by_engagement(deep_dives)
 
     report_html, inline_images = report.render(threads, len(survivors), deep_dives)
     subject = f"MarketPulse AI — {len(threads)} threads"
@@ -107,7 +141,12 @@ def run():
         subject += f" + {len(deep_dives)} deep dive{'s' if len(deep_dives) != 1 else ''}"
     mailer.send(f"{subject} ({_now_str()})", report_html, inline_images)
 
-    st = state.mark_sent(st, survivors)
+    # Only stories that actually made it into this email are marked "seen" -- a story that was
+    # merely a candidate (unused because higher-ranked stories filled the quota) or that failed
+    # generation / got blocked by a verification check stays eligible for a future run, instead
+    # of being permanently discarded for a transient or borderline failure.
+    published_stories = [s for s in survivors if s["link"] in published_links]
+    st = state.mark_sent(st, published_stories)
     st = state.save_recent_visuals(st, used_visuals)
     state.save(st)
 
@@ -122,5 +161,24 @@ def _now_str():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
+def _notify_failure(exc):
+    """Best-effort: if the run crashes, try to at least tell the user why instead of silently
+    producing nothing. If the failure IS the email send itself, this will also fail -- that's
+    fine, it's a best-effort backstop, not a guarantee, and the real error is already logged."""
+    try:
+        mailer.send(
+            f"MarketPulse AI — run failed ({_now_str()})",
+            f"<p>The scheduled run crashed before it could finish:</p><pre>{type(exc).__name__}: {exc}</pre>"
+            f"<p>Check marketpulse.log / the GitHub Actions run for the full traceback.</p>",
+        )
+    except Exception as notify_exc:
+        logger.error("Also failed to send the failure notification email: %s", notify_exc)
+
+
 if __name__ == "__main__":
-    run()
+    try:
+        run()
+    except Exception as exc:
+        logger.error("=== MarketPulse run crashed: %s ===\n%s", exc, traceback.format_exc())
+        _notify_failure(exc)
+        raise

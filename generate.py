@@ -4,7 +4,14 @@ import config
 import verify
 from ai_client import call_for_json
 from chart import resolve_visual
-from persona import ENGAGEMENT_GUIDELINES, HOOK_SHAPE_TAXONOMY, PERSONA, VALUE_GUIDELINES, VISUAL_GUIDELINES
+from persona import (
+    CONTENT_QUALITY_GUIDELINES,
+    ENGAGEMENT_GUIDELINES,
+    HOOK_SHAPE_TAXONOMY,
+    PERSONA,
+    VALUE_GUIDELINES,
+    VISUAL_GUIDELINES,
+)
 from regen import maybe_regenerate
 
 logger = logging.getLogger("marketpulse.generate")
@@ -15,18 +22,22 @@ SYSTEM_PROMPT = (
 
 Given one news story, write a short, ready-to-post X/Twitter thread of 3-5 tweets covering it. \
 The thread should:
-- Open with a hook tied to the core fact — not a flat headline restatement. See the hook shape \
-taxonomy below for how to pick and vary it.
-- Add one tweet of immediate market context — what it means for the relevant markets or sectors \
-right now.
-- Include at least one concrete number or data point from the story.
-- Close with a "What to watch next:" line naming the next relevant data point, event, or catalyst, \
-followed directly by a question that invites the reader to reply with their own take.
+- Tweet 1: the single most surprising or important data point in the story, stated as a specific \
+claim (not a question, not a flat headline restatement). See the hook shape taxonomy below for \
+how to pick and vary the framing.
+- Middle tweet(s): immediate market context and the "so what" — what this means for the relevant \
+markets or sectors right now, and why (the transmission mechanism, not an opinion on what happens \
+next).
+- Close with a "What to watch next:" line naming 3-5 dated catalysts (the next data release, CB \
+meeting, earnings date, expiry, or technical level) relevant to this story, followed directly by \
+a question that invites the reader to reply with their own take.
 
 """
     + HOOK_SHAPE_TAXONOMY
     + "\n\n"
     + VALUE_GUIDELINES
+    + "\n\n"
+    + CONTENT_QUALITY_GUIDELINES
     + "\n\n"
     + ENGAGEMENT_GUIDELINES
     + "\n\n"
@@ -47,9 +58,9 @@ use to quote-post this thread later — a different angle than the thread itself
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 {"thread": ["1/4 ...", "2/4 ...", ...], \
 "hook_shape": "number_led"|"contrarian"|"stakes"|"question"|"surprising_fact", \
-"visual_type": "price_chart"|"candlestick_chart"|"renko_chart"|"pnf_chart"|"ohlc_chart"|"heikin_ashi_chart"|"kagi_chart"|"area_chart"|"volume_chart"|"volume_profile_chart"|"yield_curve_chart"|"seasonality_chart"|"bar_chart"|"dumbbell_chart"|"grouped_bar_chart"|"stacked_bar_chart"|"waterfall_chart"|"slope_chart"|"bullet_chart"|"pie_chart"|"donut_chart"|"treemap_chart"|"histogram"|"box_plot"|"violin_plot"|"scatter_chart"|"bubble_chart"|"correlation_matrix_chart"|"regression_chart"|"trend_chart"|"term_structure_chart"|"spread_chart"|"zscore_chart"|"cumulative_flow_chart"|"flowchart"|"real_world_image"|"custom_stat_visual"|"none", \
+"visual_type": "price_chart"|"candlestick_chart"|"renko_chart"|"pnf_chart"|"ohlc_chart"|"heikin_ashi_chart"|"kagi_chart"|"area_chart"|"volume_chart"|"volume_profile_chart"|"yield_curve_chart"|"seasonality_chart"|"moving_average_chart"|"bollinger_bands_chart"|"rsi_chart"|"macd_chart"|"drawdown_chart"|"historical_volatility_chart"|"bar_chart"|"dumbbell_chart"|"grouped_bar_chart"|"stacked_bar_chart"|"waterfall_chart"|"slope_chart"|"bullet_chart"|"pie_chart"|"donut_chart"|"treemap_chart"|"histogram"|"box_plot"|"violin_plot"|"scatter_chart"|"bubble_chart"|"correlation_matrix_chart"|"regression_chart"|"trend_chart"|"term_structure_chart"|"spread_chart"|"zscore_chart"|"cumulative_flow_chart"|"flowchart"|"real_world_image"|"custom_stat_visual"|"none", \
 "visual_confidence": 0-10 (how confidently the chosen visual_type's DATA SHAPE fits this story; a low score drops the visual even if visual_type is set), \
-"ticker": "AAPL" or null (used by price_chart, candlestick_chart, renko_chart, pnf_chart, ohlc_chart, heikin_ashi_chart, kagi_chart, area_chart, volume_chart, volume_profile_chart, seasonality_chart), \
+"ticker": "AAPL" or null (used by price_chart, candlestick_chart, renko_chart, pnf_chart, ohlc_chart, heikin_ashi_chart, kagi_chart, area_chart, volume_chart, volume_profile_chart, seasonality_chart, moving_average_chart, bollinger_bands_chart, rsi_chart, macd_chart, drawdown_chart, historical_volatility_chart), \
 "bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "...", "orientation": "vertical"|"horizontal"} or null, \
 "dumbbell_chart": {"title": "...", "labels": [...], "start_values": [...], "end_values": [...], "start_label": "...", "end_label": "...", "unit": "..."} or null, \
 "grouped_bar_chart": {"title": "...", "labels": [...], "series": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
@@ -121,7 +132,8 @@ def generate_short_thread(story, used_hooks=None, slot_framing=None, used_visual
 
         thread = [t for t in result.get("thread", []) if t]
         if not thread:
-            return None
+            logger.warning("Story '%s': model produced no usable thread text", story["title"])
+            return None, "empty_thread"
 
         # Grounding text must match exactly what the model was shown -- not the full (possibly
         # longer) feed summary -- otherwise a "grounded" number could really just be a number
@@ -131,7 +143,18 @@ def generate_short_thread(story, used_hooks=None, slot_framing=None, used_visual
         ok, reason = verify.check_causal_claims(thread, grounding_story)
         if not ok:
             logger.warning("Blocked story '%s': %s", story["title"], reason)
-            return None
+            return None, "blocked_causal_claim"
+
+        if config.CONTENT_ENGINE_ENABLED:
+            ok, reason = verify.check_banned_filler(thread)
+            if not ok:
+                logger.warning("Blocked story '%s': %s", story["title"], reason)
+                return None, "blocked_banned_filler"
+
+            ok, reason = verify.check_hashtag_discipline(thread)
+            if not ok:
+                logger.warning("Blocked story '%s': %s", story["title"], reason)
+                return None, "blocked_hashtag_discipline"
 
         result, visual_warnings = verify.select_visual(result, grounding_story, thread, used_visuals)
 
@@ -141,7 +164,7 @@ def generate_short_thread(story, used_hooks=None, slot_framing=None, used_visual
         ok, reason = verify.verify_ticker_direction(thread, chart_stats)
         if not ok:
             logger.warning("Blocked story '%s': %s", story["title"], reason)
-            return None
+            return None, "blocked_direction_mismatch"
 
         advisory_warnings = verify.check_bare_numbers(thread) + verify.check_verb_intensity(thread, chart_stats)
         provenance = verify.build_provenance(story, chart_stats, visual_warnings, advisory_warnings)
@@ -166,26 +189,56 @@ def generate_short_thread(story, used_hooks=None, slot_framing=None, used_visual
             "story_link": story["link"],
             "story_source": story["source"],
             "provenance": provenance,
-        }
+        }, None
     except Exception as exc:
         logger.error("Short thread generation failed for story '%s': %s", story["title"], exc)
-        return None
+        return None, "generation_error"
 
 
-def generate_short_threads(stories, used_hooks=None, slot_framing=None, used_visuals=None):
+def generate_short_threads(stories, used_hooks=None, slot_framing=None, used_visuals=None, exclude_links=None):
+    """Attempts candidates in triage-ranked order and BACKFILLS from the rest of `stories` (up
+    to config.MAX_STORIES_ANALYZED candidates, not just the top MAX_SHORT_THREADS) whenever one
+    is skipped, blocked, or fails to generate -- so one bad candidate doesn't silently shrink
+    the day's output when other viable stories were available. Stops once MAX_SHORT_THREADS
+    threads have been produced, or candidates run out. Returns (threads, used_links) where
+    used_links is the set of story links that ended up published, for seen-tracking and to
+    keep deep dives from covering the same story twice."""
     if used_hooks is None:
         used_hooks = []
     if used_visuals is None:
         used_visuals = []
+    exclude_links = exclude_links or set()
+
     threads = []
-    for story in stories[: config.MAX_SHORT_THREADS]:
-        thread = generate_short_thread(story, used_hooks, slot_framing, used_visuals)
+    used_links = set()
+    reason_counts = {}
+    attempted = 0
+
+    for story in stories:
+        if len(threads) >= config.MAX_SHORT_THREADS:
+            break
+        if story["link"] in exclude_links:
+            continue
+
+        attempted += 1
+        thread, reason = generate_short_thread(story, used_hooks, slot_framing, used_visuals)
         if thread:
             threads.append(thread)
+            used_links.add(story["link"])
             if thread.get("hook_shape"):
                 used_hooks.append(thread["hook_shape"])
             vt = thread.get("visual_type")
             if vt and vt != "none":
                 used_visuals.append(vt)
-    logger.info("Generated %d short thread(s) from %d candidate stories", len(threads), len(stories))
-    return threads
+        else:
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+    if reason_counts:
+        breakdown = ", ".join(f"{count} {reason}" for reason, count in sorted(reason_counts.items()))
+        logger.info(
+            "Short threads: %d/%d candidates tried -> %d published (skipped: %s)",
+            attempted, len(stories), len(threads), breakdown,
+        )
+    else:
+        logger.info("Short threads: %d/%d candidates tried -> %d published, no skips", attempted, len(stories), len(threads))
+    return threads, used_links

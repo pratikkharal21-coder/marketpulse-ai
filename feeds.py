@@ -64,18 +64,24 @@ def _entry_timestamp(entry):
 def fetch_recent_items(lookback_hours):
     cutoff = datetime.now(timezone.utc).timestamp() - lookback_hours * 3600
     items = []
+    category_counts = {category: 0 for category in FEEDS}
+    dead_feeds = []
+
     for category, urls in FEEDS.items():
         for url in urls:
             try:
                 parsed = feedparser.parse(url)
             except Exception as exc:
                 logger.warning("Failed to fetch feed %s: %s", url, exc)
+                dead_feeds.append(url)
                 continue
 
             if parsed.bozo and not parsed.entries:
                 logger.warning("Feed %s returned no usable entries (bozo): %s", url, parsed.get("bozo_exception"))
+                dead_feeds.append(url)
                 continue
 
+            feed_item_count = 0
             for entry in parsed.entries:
                 published = _entry_timestamp(entry)
                 if published and published.timestamp() < cutoff:
@@ -95,5 +101,22 @@ def fetch_recent_items(lookback_hours):
                         "published": published.isoformat() if published else None,
                     }
                 )
-    logger.info("Fetched %d raw items across %d feeds", len(items), sum(len(u) for u in FEEDS.values()))
+                feed_item_count += 1
+
+            category_counts[category] += feed_item_count
+            if feed_item_count == 0 and parsed.entries:
+                # The feed parsed fine and had entries, they just all fell outside the
+                # lookback window -- normal for a quiet/low-frequency source, not a failure.
+                logger.debug("Feed %s: 0 items within the %dh lookback (%d total entries)", url, lookback_hours, len(parsed.entries))
+            else:
+                logger.debug("Feed %s: %d item(s) within the %dh lookback", url, feed_item_count, lookback_hours)
+
+    total_feeds = sum(len(u) for u in FEEDS.values())
+    logger.info(
+        "Fetched %d raw item(s) across %d feed(s) in %d categories: %s",
+        len(items), total_feeds, len(FEEDS),
+        ", ".join(f"{cat}={count}" for cat, count in category_counts.items()),
+    )
+    if dead_feeds:
+        logger.warning("%d/%d feed(s) returned nothing usable this run: %s", len(dead_feeds), total_feeds, dead_feeds)
     return items

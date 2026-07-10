@@ -445,6 +445,71 @@ class ShapeMatchTests(unittest.TestCase):
         result = {"visual_type": "renko_chart", "ticker": "BTC-USD"}
         new_result, warning = verify.check_shape_match(result, story)
         self.assertIsNotNone(warning)
+        for other in ("pnf_chart", "kagi_chart"):
+            with self.subTest(visual_type=other):
+                new_result, warning = verify.check_shape_match({"visual_type": other, "ticker": "BTC-USD"}, story)
+                self.assertIsNotNone(warning)
+
+    # Regression tests for a second batch of real-world false positives found via stress-testing
+    # after the candlestick fix -- the same "keyword list too narrow" bug existed for every
+    # technical-indicator chart type, not just candlestick, since each names its own specific
+    # vocabulary (RSI/overbought, MACD/crossover, "below its high", "calmest trading", etc.)
+    # that the generic multi_period_trend signals never covered.
+    def test_rsi_chart_passes_for_overbought_language(self):
+        story = {"title": "Oil looks overbought after sharp rally, RSI flashes warning", "summary": ""}
+        result = {"visual_type": "rsi_chart", "ticker": "CL=F"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning, warning)
+
+    def test_drawdown_chart_passes_for_below_high_language(self):
+        story = {"title": "Bitcoin still 15% below its all-time high despite rebound", "summary": ""}
+        result = {"visual_type": "drawdown_chart", "ticker": "BTC-USD"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning, warning)
+
+    def test_historical_volatility_chart_passes_for_calm_trading_language(self):
+        story = {"title": "Currency markets see calmest trading in months", "summary": ""}
+        result = {"visual_type": "historical_volatility_chart", "ticker": "EURUSD=X"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning, warning)
+
+    def test_seasonality_chart_passes_for_historically_language(self):
+        story = {"title": "Stocks historically rally in the final weeks of the year", "summary": ""}
+        result = {"visual_type": "seasonality_chart", "ticker": "^GSPC"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning, warning)
+
+    def test_macd_chart_passes_for_crossover_language(self):
+        story = {"title": "Gold flashes bullish MACD crossover signal", "summary": ""}
+        result = {"visual_type": "macd_chart", "ticker": "GC=F"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning, warning)
+
+    def test_bollinger_chart_passes_for_squeeze_language(self):
+        story = {"title": "Silver squeezes toward the top of its Bollinger Band range", "summary": ""}
+        result = {"visual_type": "bollinger_bands_chart", "ticker": "SI=F"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning, warning)
+
+    def test_moving_average_chart_passes_for_average_crossing_language(self):
+        story = {"title": "S&P 500 breaks above its 200-day moving average", "summary": ""}
+        result = {"visual_type": "moving_average_chart", "ticker": "^GSPC"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning, warning)
+
+    def test_volume_chart_passes_for_volume_spike_language(self):
+        story = {"title": "Unusual volume spike hits regional bank stocks", "summary": ""}
+        result = {"visual_type": "volume_chart", "ticker": "KRE"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNone(warning, warning)
+
+    def test_technical_chart_still_blocks_a_totally_unrelated_story(self):
+        # Sanity check: the widening must not turn these into a rubber stamp -- a story with
+        # none of the technical vocabulary and no numbered period should still be blocked.
+        story = {"title": "Company X reports record quarterly profit", "summary": "Company X posted a record profit figure."}
+        result = {"visual_type": "rsi_chart", "ticker": "TEST"}
+        new_result, warning = verify.check_shape_match(result, story)
+        self.assertIsNotNone(warning)
 
 
 class VisualThreadConsistencyTests(unittest.TestCase):

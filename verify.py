@@ -50,16 +50,16 @@ VISUAL_TYPE_SHAPES = {
     "heikin_ashi_chart": {"single_stat", "multi_period_trend"},
     "kagi_chart": {"multi_period_trend"},
     "area_chart": {"single_stat", "multi_period_trend"},
-    "volume_chart": {"multi_period_trend"},
-    "volume_profile_chart": {"multi_period_trend"},
+    "volume_chart": {"multi_period_trend", "technical_reading"},
+    "volume_profile_chart": {"multi_period_trend", "technical_reading"},
     "yield_curve_chart": {"macro_curve"},
-    "seasonality_chart": {"multi_period_trend"},
-    "moving_average_chart": {"multi_period_trend"},
-    "bollinger_bands_chart": {"multi_period_trend"},
-    "rsi_chart": {"multi_period_trend"},
-    "macd_chart": {"multi_period_trend"},
-    "drawdown_chart": {"multi_period_trend"},
-    "historical_volatility_chart": {"multi_period_trend"},
+    "seasonality_chart": {"multi_period_trend", "technical_reading"},
+    "moving_average_chart": {"multi_period_trend", "technical_reading"},
+    "bollinger_bands_chart": {"multi_period_trend", "technical_reading"},
+    "rsi_chart": {"multi_period_trend", "technical_reading"},
+    "macd_chart": {"multi_period_trend", "technical_reading"},
+    "drawdown_chart": {"multi_period_trend", "technical_reading"},
+    "historical_volatility_chart": {"multi_period_trend", "technical_reading"},
     # Includes "single_stat" like price_chart/area_chart -- a positioning story ("funds turn net
     # short gold") is a single-snapshot claim even though the chart itself shows weekly history,
     # and COT-specific language ("net short", "flipped", "specs piled in") isn't covered by the
@@ -114,6 +114,20 @@ _SHAPE_SIGNALS = {
         "over the past", "over the last", "this week", "this month", "recent weeks",
         "recent months", "in recent", "week-over-week", "month-over-month", "several weeks",
         "several months", "several quarters", "past few",
+    ),
+    # Technical-analysis vocabulary that names a specific computed reading (RSI, MACD, moving
+    # average, drawdown, realized volatility) -- the story naming the indicator IS the shape
+    # signal here, distinct from generic "over time" phrasing in multi_period_trend.
+    "technical_reading": (
+        "rsi", "overbought", "oversold", "relative strength index", "macd", "bullish crossover",
+        "bearish crossover", "momentum crossover", "moving average", "golden cross", "death cross",
+        "bollinger", "volatility squeeze", "trading range", "below its high", "below its highs",
+        "off its high", "off its highs", "off highs", "down from its peak", "down from its high",
+        "below its peak", "below its all-time high", "drawdown", "underwater", "calm trading",
+        "calmest", "choppy", "choppiness", "turbulent", "quiet trading", "volatile trading",
+        "realized volatility", "implied volatility", "historically", "seasonal", "seasonality",
+        "tends to rally", "tends to fall", "seasonal pattern", "volume spike", "trading volume",
+        "heavy volume", "heavy trading", "unusual volume", "shares traded",
     ),
     "ranked_list": (
         "top ", "biggest", "largest", "leading", "worst", "best-performing", "best performing",

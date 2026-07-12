@@ -233,6 +233,12 @@ def generate_top_longform(stories, used_hooks=None, slot_framing=None, used_visu
     for story in stories:
         if len(items) >= config.MAX_LONGFORM_STORIES:
             break
+        if attempted >= config.MAX_GENERATION_ATTEMPTS:
+            logger.info(
+                "Deep dives: stopping backfill at MAX_GENERATION_ATTEMPTS (%d) to leave quota "
+                "headroom for later runs today.", config.MAX_GENERATION_ATTEMPTS,
+            )
+            break
 
         attempted += 1
         longform, reason = generate_longform(story, used_hooks, slot_framing, used_visuals)

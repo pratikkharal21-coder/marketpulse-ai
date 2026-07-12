@@ -31,6 +31,14 @@ TRIAGE_RELEVANCE_THRESHOLD = int(os.environ.get("TRIAGE_RELEVANCE_THRESHOLD", "6
 MAX_STORIES_ANALYZED = int(os.environ.get("MAX_STORIES_ANALYZED", "10"))
 MAX_SHORT_THREADS = int(os.environ.get("MAX_SHORT_THREADS", "5"))
 MAX_LONGFORM_STORIES = int(os.environ.get("MAX_LONGFORM_STORIES", "2"))
+# Separate from MAX_STORIES_ANALYZED: caps how many candidates each backfill loop (short
+# threads, deep dives) will actually spend a generation call on per run. Each call costs
+# ~7.5-9K Groq tokens against a 100K/day account-wide quota shared across all 3 daily runs --
+# letting backfill run all the way to MAX_STORIES_ANALYZED (10) in both stages lets one run's
+# worth of attempts (up to 20 calls) burn the entire day's budget by itself, starving later
+# runs. Lower default trades a little resilience (fewer backfill attempts if early candidates
+# get blocked) for leaving quota headroom for the rest of the day.
+MAX_GENERATION_ATTEMPTS = int(os.environ.get("MAX_GENERATION_ATTEMPTS", "6"))
 LOOKBACK_HOURS = int(os.environ.get("LOOKBACK_HOURS", "8"))
 REGEN_THRESHOLD = int(os.environ.get("REGEN_THRESHOLD", "6"))
 

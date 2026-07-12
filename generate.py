@@ -219,6 +219,12 @@ def generate_short_threads(stories, used_hooks=None, slot_framing=None, used_vis
     for story in stories:
         if len(threads) >= config.MAX_SHORT_THREADS:
             break
+        if attempted >= config.MAX_GENERATION_ATTEMPTS:
+            logger.info(
+                "Short threads: stopping backfill at MAX_GENERATION_ATTEMPTS (%d) to leave "
+                "quota headroom for later runs today.", config.MAX_GENERATION_ATTEMPTS,
+            )
+            break
         if story["link"] in exclude_links:
             continue
 

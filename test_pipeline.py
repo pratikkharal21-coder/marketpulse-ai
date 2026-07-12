@@ -70,8 +70,11 @@ class ShortThreadsBackfillTests(unittest.TestCase):
             call_count["n"] += 1
             return resp
 
-        with patch("generate.call_for_json", side_effect=fake_call_for_json):
-            threads, used_links = generate.generate_short_threads(stories)
+        # This test is about the backfill-past-failures logic specifically, not the separate
+        # MAX_GENERATION_ATTEMPTS quota-headroom cap -- raise the cap so 7 attempts can happen.
+        with patch("generate.config.MAX_GENERATION_ATTEMPTS", 10):
+            with patch("generate.call_for_json", side_effect=fake_call_for_json):
+                threads, used_links = generate.generate_short_threads(stories)
 
         self.assertEqual(len(threads), config.MAX_SHORT_THREADS)
         self.assertEqual(len(used_links), config.MAX_SHORT_THREADS)
@@ -102,6 +105,24 @@ class ShortThreadsBackfillTests(unittest.TestCase):
         with patch("generate.call_for_json", side_effect=lambda *a, **k: _ok_response(0)):
             threads, used_links = generate.generate_short_threads(stories)
         self.assertEqual(len(threads), 2)
+
+    def test_backfill_stops_at_max_generation_attempts_even_with_more_candidates(self):
+        # MAX_GENERATION_ATTEMPTS caps how many calls a single run will spend per stage, so
+        # one run's backfill can't burn the whole day's shared Groq quota by itself. With the
+        # cap lower than the candidate pool and every candidate failing, the loop must stop at
+        # the cap, not exhaust all 10 stories.
+        stories = [_story(i) for i in range(10)]
+        call_count = {"n": 0}
+
+        def fake_call_for_json(*a, **k):
+            call_count["n"] += 1
+            return _empty_response()
+
+        with patch("generate.config.MAX_GENERATION_ATTEMPTS", 4):
+            with patch("generate.call_for_json", side_effect=fake_call_for_json):
+                threads, used_links = generate.generate_short_threads(stories)
+        self.assertEqual(len(threads), 0)
+        self.assertEqual(call_count["n"], 4)
 
     def test_stops_backfilling_once_daily_quota_is_exhausted(self):
         # Once Groq's daily TPD quota is hit, every subsequent candidate is guaranteed to fail

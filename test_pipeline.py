@@ -181,6 +181,12 @@ class DeepDiveBackfillTests(unittest.TestCase):
 
 
 class AIClientRetryTests(unittest.TestCase):
+    def setUp(self):
+        # The daily-quota tests flip this module-level flag; reset it so one test's outcome
+        # can't leak into the next (each real GitHub Actions run is a fresh process, but the
+        # test suite runs everything in one).
+        ai_client._groq_daily_quota_exhausted = False
+
     def test_recovers_from_a_transient_failure(self):
         call_count = {"n": 0}
 
@@ -216,20 +222,70 @@ class AIClientRetryTests(unittest.TestCase):
     def test_daily_quota_error_is_not_retried(self):
         # A per-minute rate limit is transient and worth retrying; a daily TPD quota breach
         # won't clear for the rest of the day, so retrying it (even a few times) just wastes
-        # time against a guaranteed failure. Must raise immediately, on the first attempt.
+        # time against a guaranteed failure. Must raise immediately, on the first attempt --
+        # with no Gemini fallback configured, there's nowhere else to go.
         call_count = {"n": 0}
 
         def rate_limited(*a, **k):
             call_count["n"] += 1
             raise _daily_quota_error()
 
-        with patch("ai_client.client.chat.completions.create", side_effect=rate_limited):
-            with patch("ai_client.time.sleep") as mock_sleep:
-                with self.assertRaises(ai_client.QuotaExhaustedError):
-                    ai_client.call_for_json("model", "sys", "user")
+        with patch("ai_client.gemini_client", None):
+            with patch("ai_client.client.chat.completions.create", side_effect=rate_limited):
+                with patch("ai_client.time.sleep") as mock_sleep:
+                    with self.assertRaises(ai_client.QuotaExhaustedError):
+                        ai_client.call_for_json("model", "sys", "user")
 
         self.assertEqual(call_count["n"], 1)
         mock_sleep.assert_not_called()
+
+    def test_daily_quota_falls_back_to_gemini_when_configured(self):
+        # With a Gemini key configured, a Groq daily-quota breach should transparently hand the
+        # same call to Gemini instead of giving up the candidate outright.
+        fake_gemini = MagicMock()
+        fake_gemini.models.generate_content.return_value = MagicMock(text='{"ok": true}')
+
+        def rate_limited(*a, **k):
+            raise _daily_quota_error()
+
+        with patch("ai_client.gemini_client", fake_gemini):
+            with patch("ai_client.client.chat.completions.create", side_effect=rate_limited):
+                with patch("ai_client.time.sleep"):
+                    result = ai_client.call_for_json("model", "sys", "user")
+
+        self.assertEqual(result, {"ok": True})
+        fake_gemini.models.generate_content.assert_called_once()
+        self.assertEqual(fake_gemini.models.generate_content.call_args.kwargs["model"], config.GEMINI_FALLBACK_MODEL)
+
+    def test_subsequent_calls_skip_groq_once_daily_quota_is_marked_exhausted(self):
+        # Avoid re-hitting a Groq call that's guaranteed to fail the same way every time within
+        # a run once the daily wall has already been confirmed hit once.
+        fake_gemini = MagicMock()
+        fake_gemini.models.generate_content.return_value = MagicMock(text='{"ok": true}')
+        groq_call = MagicMock(side_effect=lambda *a, **k: (_ for _ in ()).throw(_daily_quota_error()))
+
+        with patch("ai_client.gemini_client", fake_gemini):
+            with patch("ai_client.client.chat.completions.create", groq_call):
+                with patch("ai_client.time.sleep"):
+                    ai_client.call_for_json("model", "sys", "user")
+                    self.assertEqual(groq_call.call_count, 1)
+                    ai_client.call_for_json("model", "sys", "user")
+                    # Groq was never called again for the second request -- straight to Gemini.
+                    self.assertEqual(groq_call.call_count, 1)
+                    self.assertEqual(fake_gemini.models.generate_content.call_count, 2)
+
+    def test_gemini_fallback_also_failing_raises_quota_exhausted(self):
+        fake_gemini = MagicMock()
+        fake_gemini.models.generate_content.side_effect = RuntimeError("Gemini also unavailable")
+
+        def rate_limited(*a, **k):
+            raise _daily_quota_error()
+
+        with patch("ai_client.gemini_client", fake_gemini):
+            with patch("ai_client.client.chat.completions.create", side_effect=rate_limited):
+                with patch("ai_client.time.sleep"):
+                    with self.assertRaises(ai_client.QuotaExhaustedError):
+                        ai_client.call_for_json("model", "sys", "user")
 
     def test_transient_rate_limit_without_daily_quota_wording_is_still_retried(self):
         request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")

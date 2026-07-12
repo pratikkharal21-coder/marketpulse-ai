@@ -6,10 +6,24 @@ day's output when other viable candidates existed."""
 import unittest
 from unittest.mock import MagicMock, patch
 
+import httpx
+from groq import RateLimitError
+
 import ai_client
 import config
 import generate
 import longform
+
+
+def _daily_quota_error():
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    response = httpx.Response(429, request=request)
+    return RateLimitError(
+        "Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_x` on "
+        "tokens per day (TPD): Limit 100000, Used 99992, Requested 800. Please try again in "
+        "1h25m3.847s. Visit https://console.groq.com/settings/billing to learn more.",
+        response=response, body=None,
+    )
 
 
 def _story(n, title=None):
@@ -89,6 +103,28 @@ class ShortThreadsBackfillTests(unittest.TestCase):
             threads, used_links = generate.generate_short_threads(stories)
         self.assertEqual(len(threads), 2)
 
+    def test_stops_backfilling_once_daily_quota_is_exhausted(self):
+        # Once Groq's daily TPD quota is hit, every subsequent candidate is guaranteed to fail
+        # identically -- burning through the rest of the candidate list just wastes run time
+        # (and, previously, kept re-triggering the same doomed retry-with-backoff). The loop
+        # should stop at the first quota_exhausted result instead of trying all 10 stories.
+        stories = [_story(i) for i in range(10)]
+        call_count = {"n": 0}
+
+        def fake_call_for_json(model, system, user_content, max_tokens=1024):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return _ok_response(0)
+            raise ai_client.QuotaExhaustedError(str(_daily_quota_error()))
+
+        with patch("generate.call_for_json", side_effect=fake_call_for_json):
+            threads, used_links = generate.generate_short_threads(stories)
+
+        self.assertEqual(len(threads), 1)
+        # Only 2 attempts: one success, one that hit the quota wall and stopped the loop --
+        # candidates #2-#9 must never have been tried.
+        self.assertEqual(call_count["n"], 2)
+
 
 class DeepDiveBackfillTests(unittest.TestCase):
     def test_backfills_past_the_target_count_when_early_candidates_fail(self):
@@ -107,6 +143,20 @@ class DeepDiveBackfillTests(unittest.TestCase):
 
         self.assertEqual(len(items), config.MAX_LONGFORM_STORIES)
         self.assertNotIn("http://x.test/0", used_links)
+
+    def test_stops_backfilling_once_daily_quota_is_exhausted(self):
+        stories = [_story(i) for i in range(10)]
+        call_count = {"n": 0}
+
+        def fake_call_for_json(model, system, user_content, max_tokens=2048):
+            call_count["n"] += 1
+            raise ai_client.QuotaExhaustedError(str(_daily_quota_error()))
+
+        with patch("longform.call_for_json", side_effect=fake_call_for_json):
+            items, used_links = longform.generate_top_longform(stories)
+
+        self.assertEqual(len(items), 0)
+        self.assertEqual(call_count["n"], 1)
 
 
 class AIClientRetryTests(unittest.TestCase):
@@ -141,6 +191,49 @@ class AIClientRetryTests(unittest.TestCase):
                     ai_client.call_for_json("model", "sys", "user")
 
         self.assertEqual(call_count["n"], ai_client.RETRY_ATTEMPTS + 1)
+
+    def test_daily_quota_error_is_not_retried(self):
+        # A per-minute rate limit is transient and worth retrying; a daily TPD quota breach
+        # won't clear for the rest of the day, so retrying it (even a few times) just wastes
+        # time against a guaranteed failure. Must raise immediately, on the first attempt.
+        call_count = {"n": 0}
+
+        def rate_limited(*a, **k):
+            call_count["n"] += 1
+            raise _daily_quota_error()
+
+        with patch("ai_client.client.chat.completions.create", side_effect=rate_limited):
+            with patch("ai_client.time.sleep") as mock_sleep:
+                with self.assertRaises(ai_client.QuotaExhaustedError):
+                    ai_client.call_for_json("model", "sys", "user")
+
+        self.assertEqual(call_count["n"], 1)
+        mock_sleep.assert_not_called()
+
+    def test_transient_rate_limit_without_daily_quota_wording_is_still_retried(self):
+        request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+        response = httpx.Response(429, request=request)
+        transient = RateLimitError(
+            "Rate limit reached for model `llama-3.1-8b-instant`: requests per minute (RPM): "
+            "Limit 30, Used 30. Please try again in 1.2s.",
+            response=response, body=None,
+        )
+        call_count = {"n": 0}
+
+        def flaky(*a, **k):
+            call_count["n"] += 1
+            if call_count["n"] < 2:
+                raise transient
+            resp = MagicMock()
+            resp.choices = [MagicMock(message=MagicMock(content='{"ok": true}'))]
+            return resp
+
+        with patch("ai_client.client.chat.completions.create", side_effect=flaky):
+            with patch("ai_client.time.sleep"):
+                result = ai_client.call_for_json("model", "sys", "user")
+
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(call_count["n"], 2)
 
 
 if __name__ == "__main__":

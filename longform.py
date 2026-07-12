@@ -2,7 +2,7 @@ import logging
 
 import config
 import verify
-from ai_client import call_for_json
+from ai_client import QuotaExhaustedError, call_for_json
 from chart import resolve_visual
 from persona import (
     CONTENT_QUALITY_GUIDELINES,
@@ -208,6 +208,8 @@ def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=No
             "story_source": story["source"],
             "provenance": provenance,
         }, None
+    except QuotaExhaustedError:
+        return None, "quota_exhausted"
     except Exception as exc:
         logger.error("Long-form generation failed for story '%s': %s", story["title"], exc)
         return None, "generation_error"
@@ -244,6 +246,13 @@ def generate_top_longform(stories, used_hooks=None, slot_framing=None, used_visu
                 used_visuals.append(vt)
         else:
             reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            if reason == "quota_exhausted":
+                logger.error(
+                    "Stopping deep-dive generation early: Groq daily quota exhausted, "
+                    "%d remaining candidate(s) not attempted this run.",
+                    len(stories) - attempted,
+                )
+                break
 
     if reason_counts:
         breakdown = ", ".join(f"{count} {reason}" for reason, count in sorted(reason_counts.items()))

@@ -313,6 +313,77 @@ def _field_for_visual_type(visual_type):
     return None
 
 
+def _paired_labels_values(spec):
+    """Common {"labels": [...], "values": [...]} shape shared by several spec-driven types."""
+    return list(zip(spec.get("labels") or [], spec.get("values") or []))
+
+
+# Types whose spec reduces cleanly to a plain labels[]/values[] pairing -- a stat card can
+# always represent "this label had this value" regardless of what the original chart framing
+# was (a bar comparison, a time series, a slice of a pie), since the number itself is what
+# matters for accuracy, not the chart geometry it was originally destined for.
+_LABELS_VALUES_TYPES = frozenset({
+    "bar_chart", "histogram", "pie_chart", "donut_chart", "treemap_chart", "waterfall_chart",
+    "trend_chart", "spread_chart", "cumulative_flow_chart", "term_structure_chart", "zscore_chart",
+})
+
+
+def _build_downgrade_stats(visual_type, spec, text_numbers, max_stats=3):
+    """When a spec-driven visual is rejected for containing fabricated (ungrounded) numbers,
+    salvage whichever (label, value) pairs in the model's OWN spec ARE genuinely grounded in
+    the story's own text, reusing its own labels/title rather than writing new ones from
+    scratch -- so a story with one real number and one invented comparison point still gets an
+    accurate single-stat visual instead of nothing. Returns a list of
+    {"label", "value", "unit"} dicts, capped at max_stats; empty if nothing in the spec is
+    salvageable or the type's shape doesn't reduce to a stat card at all (scatter/bubble/
+    regression/correlation_matrix/box_plot/violin_plot -- these are inherently about a
+    multi-point relationship or distribution, not a handful of standalone numbers)."""
+    if not isinstance(spec, dict):
+        return []
+    unit = spec.get("unit", "") or ""
+
+    triples = []
+    if visual_type in _LABELS_VALUES_TYPES:
+        for label, value in _paired_labels_values(spec):
+            triples.append((label, value, unit))
+    elif visual_type in ("dumbbell_chart", "slope_chart"):
+        labels = spec.get("labels") or []
+        start_label = spec.get("start_label") or "Before"
+        end_label = spec.get("end_label") or "After"
+        for label, value in zip(labels, spec.get("start_values") or []):
+            triples.append((f"{label} ({start_label})", value, unit))
+        for label, value in zip(labels, spec.get("end_values") or []):
+            triples.append((f"{label} ({end_label})", value, unit))
+    elif visual_type in ("grouped_bar_chart", "stacked_bar_chart"):
+        labels = spec.get("labels") or []
+        for series in spec.get("series") or []:
+            name = series.get("name", "") if isinstance(series, dict) else ""
+            for label, value in zip(labels, (series or {}).get("values") or []):
+                triples.append((f"{name} {label}".strip(), value, unit))
+    elif visual_type == "bullet_chart":
+        if "value" in spec:
+            triples.append(("Actual", spec.get("value"), unit))
+        if "target" in spec:
+            triples.append(("Target", spec.get("target"), unit))
+    elif visual_type == "custom_stat_visual":
+        for stat in spec.get("stats") or []:
+            if isinstance(stat, dict) and "value" in stat:
+                triples.append((stat.get("label", ""), stat.get("value"), stat.get("unit", unit)))
+
+    stats = []
+    for label, value, item_unit in triples:
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            continue
+        if not _is_grounded(value, text_numbers):
+            continue
+        stats.append({"label": str(label)[:40], "value": value, "unit": item_unit})
+        if len(stats) >= max_stats:
+            break
+    return stats
+
+
 def ground_visual_spec(result, story):
     """For any spec-driven visual_type (one where the model invents the chart's own content,
     as opposed to a ticker-driven type where chart.py fetches real data), require:
@@ -322,8 +393,11 @@ def ground_visual_spec(result, story):
       3. any quarter/year mentioned in the spec to be a period the story actually discusses
          (catches e.g. a Q1 chart attached to a Q2 story).
     The story's title/summary text is the only free, already-coded source of ground truth for
-    an arbitrary story's specific facts. Any violation blocks the visual (downgraded to
-    "none") rather than publishing it with invented or mismatched content. Returns
+    an arbitrary story's specific facts. A title/period mismatch fully suppresses the visual
+    (down to "none"); a spec containing some fabricated numbers among otherwise-real ones is
+    downgraded to a custom_stat_visual built only from the values that ARE grounded (see
+    _build_downgrade_stats) rather than losing the visual entirely over a partially-invented
+    spec -- never publishes with invented or mismatched content either way. Returns
     (result, warning_or_None); result may be mutated."""
     visual_type = result.get("visual_type") or "none"
     if visual_type == "flowchart":
@@ -343,6 +417,24 @@ def ground_visual_spec(result, story):
     text_numbers = _extract_text_numbers(story_text)
     ungrounded_numbers = [n for n in spec_numbers if not _is_grounded(n, text_numbers)]
     if ungrounded_numbers:
+        downgraded_stats = _build_downgrade_stats(visual_type, spec, text_numbers)
+        if downgraded_stats:
+            title = spec.get("title") if isinstance(spec, dict) else None
+            if visual_type != "custom_stat_visual":
+                result[visual_type] = None
+            result["custom_stat_visual"] = {
+                "title": title or story.get("title", "")[:60],
+                "stats": downgraded_stats,
+            }
+            result["visual_type"] = "custom_stat_visual"
+            warning = (
+                f"visual '{visual_type}' downgraded to custom_stat_visual: kept "
+                f"{len(downgraded_stats)} grounded value(s), dropped "
+                f"{len(ungrounded_numbers)} fabricated/ungrounded value(s) "
+                f"(e.g. {ungrounded_numbers[:3]})"
+            )
+            logger.info("Story '%s': %s", story.get("title", "?"), warning)
+            return result, warning
         return _suppress(
             result, story,
             f"visual '{visual_type}' suppressed: {len(ungrounded_numbers)}/{len(spec_numbers)} chart "

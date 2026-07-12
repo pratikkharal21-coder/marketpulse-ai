@@ -48,6 +48,133 @@ class GroundVisualSpecTests(unittest.TestCase):
         self.assertEqual(new_result, {"visual_type": "none"})
 
 
+class VisualDowngradeTests(unittest.TestCase):
+    """A spec-driven chart needing 2+ real values (dumbbell, bar, ...) but only backed by ONE
+    real number in the story is the single most common source of a fabricated chart value --
+    the model invents a plausible-looking second data point to fill out the shape. Rather than
+    losing the visual entirely, ground_visual_spec should salvage the value(s) that ARE
+    grounded into a custom_stat_visual, using the model's own labels."""
+
+    def test_dumbbell_chart_with_one_fabricated_side_downgrades_to_stat_card(self):
+        story = {
+            "title": "Kelly Services jumps on Fair Value signal",
+            "summary": "Shares of Kelly Services delivered a 67% return after triggering a Fair Value buy signal.",
+        }
+        result = {
+            "visual_type": "dumbbell_chart",
+            "dumbbell_chart": {
+                "title": "Kelly Services return",
+                "labels": ["KELYA"],
+                "start_values": [0],
+                "end_values": [67],
+                "start_label": "Signal",
+                "end_label": "Now",
+                "unit": "%",
+            },
+        }
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIn("downgraded", warning)
+        self.assertEqual(new_result["visual_type"], "custom_stat_visual")
+        self.assertIsNone(new_result["dumbbell_chart"])
+        stats = new_result["custom_stat_visual"]["stats"]
+        self.assertEqual(len(stats), 1)
+        self.assertEqual(stats[0]["value"], 67.0)
+        self.assertEqual(stats[0]["unit"], "%")
+
+    def test_bar_chart_keeps_only_the_grounded_labels(self):
+        story = {"title": "Gold and silver both rally", "summary": "Gold rose 1.8% while silver was little changed."}
+        result = {
+            "visual_type": "bar_chart",
+            "bar_chart": {
+                "title": "Metals move",
+                "labels": ["Gold", "Silver", "Platinum"],
+                "values": [1.8, 12.4, 5.5],
+                "unit": "%",
+            },
+        }
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIn("downgraded", warning)
+        self.assertEqual(new_result["visual_type"], "custom_stat_visual")
+        stats = new_result["custom_stat_visual"]["stats"]
+        self.assertEqual(len(stats), 1)
+        self.assertEqual(stats[0]["label"], "Gold")
+        self.assertEqual(stats[0]["value"], 1.8)
+
+    def test_custom_stat_visual_itself_is_filtered_down_in_place(self):
+        story = {"title": "Bitcoin tops $70,000", "summary": "Bitcoin traded above $70,000 for the first time this year."}
+        result = {
+            "visual_type": "custom_stat_visual",
+            "custom_stat_visual": {
+                "title": "Bitcoin milestone",
+                "stats": [
+                    {"label": "Price", "value": 70000, "unit": "$"},
+                    {"label": "Fabricated stat", "value": 12345, "unit": "$"},
+                ],
+            },
+        }
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIn("downgraded", warning)
+        self.assertEqual(new_result["visual_type"], "custom_stat_visual")
+        stats = new_result["custom_stat_visual"]["stats"]
+        self.assertEqual(len(stats), 1)
+        self.assertEqual(stats[0]["label"], "Price")
+
+    def test_no_grounded_values_at_all_falls_through_to_full_suppression(self):
+        story = {"title": "Fed holds rates steady", "summary": "The Federal Reserve left interest rates unchanged today."}
+        result = {
+            "visual_type": "dumbbell_chart",
+            "dumbbell_chart": {
+                "title": "Fabricated comparison",
+                "labels": ["A"], "start_values": [11], "end_values": [22],
+                "start_label": "Before", "end_label": "After", "unit": "%",
+            },
+        }
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIn("suppressed", warning)
+        self.assertNotIn("downgraded", warning)
+        self.assertEqual(new_result["visual_type"], "none")
+        self.assertIsNone(new_result["dumbbell_chart"])
+
+    def test_correlation_type_has_no_downgrade_path_and_fully_suppresses(self):
+        # scatter/bubble/regression/correlation_matrix/box_plot/violin_plot describe a
+        # multi-point relationship or distribution, not a handful of standalone facts -- a
+        # single salvaged number wouldn't honestly represent "a correlation," so these should
+        # never downgrade, only fully suppress like before.
+        story = {"title": "Oil and airline stocks diverge", "summary": "Oil fell 3% today."}
+        result = {
+            "visual_type": "scatter_chart",
+            "scatter_chart": {
+                "title": "Oil vs airlines", "x_label": "Oil move", "y_label": "Airline move",
+                "x_values": [-3, -8, -15], "y_values": [2, 5, 9],
+            },
+        }
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIn("suppressed", warning)
+        self.assertNotIn("downgraded", warning)
+        self.assertEqual(new_result["visual_type"], "none")
+
+    def test_downgraded_stats_are_capped_at_three(self):
+        story = {
+            "title": "Four sectors move",
+            "summary": "Tech rose 5%, energy rose 3%, health fell 2%, and financials fell 1% today.",
+        }
+        result = {
+            "visual_type": "bar_chart",
+            "bar_chart": {
+                "title": "Sector moves",
+                "labels": ["Tech", "Energy", "Health", "Financials"],
+                "values": [5, 3, -2, -1],
+                "unit": "%",
+            },
+        }
+        # Make one value ungrounded to force the downgrade path even though all 4 look grounded.
+        result["bar_chart"]["values"][0] = 99
+        new_result, warning = verify.ground_visual_spec(result, story)
+        self.assertIn("downgraded", warning)
+        stats = new_result["custom_stat_visual"]["stats"]
+        self.assertLessEqual(len(stats), 3)
+
+
 class TitleAndPeriodGroundingTests(unittest.TestCase):
     def test_wrong_subject_title_suppresses_the_visual(self):
         # Numbers here ARE grounded (both appear in the story) but the chart's own title

@@ -21,6 +21,20 @@ SPEC_DRIVEN_FIELDS = (
     "cumulative_flow_chart", "custom_stat_visual",
 )
 
+# Retired from the persona.py menu (2026-07-15): 8 days of real production logs showed these
+# four picked often but NEVER once with genuinely grounded data -- scatter_chart alone
+# accounted for 14 fully-fabricated attempts (every single one 100% ungrounded, often
+# suspiciously round sequences like [50, 60, 70]) across just 8 runs, with zero successes. A
+# scatter/bubble/regression/correlation-matrix chart needs 3+ real paired observations, which
+# short news article text essentially never states -- the model kept spending its one visual
+# attempt on a type that was always going to be rejected. Kept here (not deleted from
+# SPEC_DRIVEN_FIELDS/chart.py) as a hard, unconditional block so the existing grounding
+# machinery still applies as a second layer if the model ever emits one of these anyway despite
+# not being offered in the prompt -- an LLM doesn't always respect a stated enum perfectly.
+RETIRED_VISUAL_TYPES = frozenset({
+    "scatter_chart", "bubble_chart", "regression_chart", "correlation_matrix_chart",
+})
+
 TICKER_DRIVEN_TYPES = (
     "price_chart", "candlestick_chart", "renko_chart", "pnf_chart", "ohlc_chart",
     "heikin_ashi_chart", "kagi_chart", "area_chart", "volume_chart", "volume_profile_chart",
@@ -542,6 +556,14 @@ def check_visual_relevance(result, story):
     irrelevant. Returns (result, warning_or_None); result may be mutated."""
     visual_type = result.get("visual_type") or "none"
 
+    if visual_type in RETIRED_VISUAL_TYPES:
+        return _suppress(
+            result, story,
+            f"visual '{visual_type}' suppressed: retired type, never selectable regardless of "
+            f"grounding (see RETIRED_VISUAL_TYPES)",
+            field=visual_type,
+        )
+
     if visual_type in TICKER_DRIVEN_TYPES:
         ok, reason = ground_ticker_subject(result.get("ticker"), story)
         if not ok:
@@ -841,6 +863,47 @@ def check_banned_filler(thread_lines):
             body = _TWEET_PREFIX_RE.sub("", line)
             if not _extract_text_numbers(body) and not _PERIOD_TOKEN_RE.search(body):
                 return False, f"'{m.group(0)}' used with no concrete level/date attached in: {line[:80]}"
+
+    return True, None
+
+
+_TWEET_NUMBERING_RE = re.compile(r"^(\d+)/(\d+)\s+")
+
+
+def check_thread_completeness(thread_lines):
+    """Hard block: every tweet numbers itself "N/TOTAL" (e.g. "3/4"), and that self-declared
+    TOTAL must match how many tweets actually made it into the thread -- otherwise a reader's
+    last visible tweet says "3/4" and a 4th that was promised never arrives. Seen in real
+    production output; the most likely source is regen.py's "sharper rewrite" retry, which is
+    an entirely independent model call that only gets compared on its expected_engagement
+    score before being swapped in -- nothing else validates it preserved the original tweet
+    count. Deterministic, not a heuristic: every tweet must have a numbering prefix, all of
+    them must agree on the same TOTAL, TOTAL must equal len(thread_lines), and the N's must
+    cover 1..TOTAL exactly once. Returns (ok, reason_or_None)."""
+    if not thread_lines:
+        return True, None
+
+    numbers = []
+    totals = set()
+    for line in thread_lines:
+        m = _TWEET_NUMBERING_RE.match(line)
+        if not m:
+            return False, f"tweet has no 'N/TOTAL' numbering prefix: {line[:80]}"
+        numbers.append(int(m.group(1)))
+        totals.add(int(m.group(2)))
+
+    if len(totals) > 1:
+        return False, f"tweets disagree on the thread's own declared total: {sorted(totals)}"
+
+    declared_total = totals.pop()
+    if declared_total != len(thread_lines):
+        return False, (
+            f"thread declares {declared_total} tweets ('N/{declared_total}') but only "
+            f"{len(thread_lines)} were actually produced -- last tweet(s) missing"
+        )
+
+    if sorted(numbers) != list(range(1, declared_total + 1)):
+        return False, f"tweet numbering isn't sequential 1..{declared_total}: got {numbers}"
 
     return True, None
 

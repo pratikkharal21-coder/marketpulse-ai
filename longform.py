@@ -153,6 +153,11 @@ def generate_longform(story, used_hooks=None, slot_framing=None, used_visuals=No
             logger.warning("Story '%s': model produced no usable thread text", story["title"])
             return None, "empty_thread"
 
+        ok, reason = verify.check_thread_completeness(thread)
+        if not ok:
+            logger.warning("Blocked story '%s': %s", story["title"], reason)
+            return None, "blocked_incomplete_thread"
+
         # Grounding text must match exactly what the model was shown -- not the full (possibly
         # longer) feed summary -- otherwise a "grounded" number could really just be a number
         # that happens to appear later in the raw feed text the model never saw.

@@ -310,6 +310,24 @@ class CheckVisualRelevanceIntegrationTests(unittest.TestCase):
         self.assertEqual(new_result["visual_type"], "price_chart")
         self.assertIsNone(warning)
 
+    def test_retired_visual_types_are_unconditionally_blocked(self):
+        # scatter_chart etc. are retired from persona.py's menu (see RETIRED_VISUAL_TYPES) after
+        # 8 days of real production logs showed a 100% fabrication rate and zero successes. Even
+        # with numbers that happen to be individually grounded, these should never survive --
+        # short news text essentially never states a genuine 3+-point correlation dataset, so a
+        # coincidental grounding match wouldn't represent a real relationship anyway.
+        story = {"title": "Oil and airlines move together", "summary": "Oil fell 3%, 8%, and 15% over three sessions while airline stocks rose 2%, 5%, and 9%."}
+        for visual_type in sorted(verify.RETIRED_VISUAL_TYPES):
+            with self.subTest(visual_type=visual_type):
+                result = {
+                    "visual_type": visual_type,
+                    visual_type: {"title": "t", "x_values": [3, 8, 15], "y_values": [2, 5, 9]},
+                }
+                new_result, warning = verify.check_visual_relevance(result, story)
+                self.assertEqual(new_result["visual_type"], "none")
+                self.assertIsNone(new_result[visual_type])
+                self.assertIn("retired", warning)
+
 
 class CausalClaimTests(unittest.TestCase):
     def test_grounded_causal_claim_passes(self):
@@ -429,6 +447,48 @@ class HashtagDisciplineTests(unittest.TestCase):
 
     def test_empty_thread_is_a_noop(self):
         ok, reason = verify.check_hashtag_discipline([])
+        self.assertTrue(ok, reason)
+
+
+class ThreadCompletenessTests(unittest.TestCase):
+    def test_consistent_full_thread_passes(self):
+        ok, reason = verify.check_thread_completeness([
+            "1/4 Gold hit a record high.", "2/4 The catalyst was jobs data.",
+            "3/4 Yields fell in response.", "4/4 Watch the Fed decision next.",
+        ])
+        self.assertTrue(ok, reason)
+
+    def test_missing_final_tweet_is_blocked(self):
+        # The exact real-world symptom: tweets numbered as if 4 were coming, but only 3 exist --
+        # most often produced by regen.py's rewrite retry not preserving the original count.
+        ok, reason = verify.check_thread_completeness([
+            "1/4 Gold hit a record high.", "2/4 The catalyst was jobs data.",
+            "3/4 Yields fell in response.",
+        ])
+        self.assertFalse(ok)
+        self.assertIn("last tweet(s) missing", reason)
+
+    def test_missing_numbering_prefix_is_blocked(self):
+        ok, reason = verify.check_thread_completeness(["Gold hit a record high with no prefix at all."])
+        self.assertFalse(ok)
+        self.assertIn("no 'N/TOTAL' numbering prefix", reason)
+
+    def test_disagreeing_totals_are_blocked(self):
+        ok, reason = verify.check_thread_completeness(["1/3 First.", "2/4 Second."])
+        self.assertFalse(ok)
+        self.assertIn("disagree", reason)
+
+    def test_non_sequential_numbering_is_blocked(self):
+        ok, reason = verify.check_thread_completeness(["1/3 First.", "1/3 Duplicate.", "3/3 Third."])
+        self.assertFalse(ok)
+        self.assertIn("sequential", reason)
+
+    def test_single_tweet_thread_passes(self):
+        ok, reason = verify.check_thread_completeness(["1/1 Gold hit a record high today."])
+        self.assertTrue(ok, reason)
+
+    def test_empty_thread_is_a_noop(self):
+        ok, reason = verify.check_thread_completeness([])
         self.assertTrue(ok, reason)
 
 

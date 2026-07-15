@@ -279,6 +279,49 @@ class TickerSubjectGroundingTests(unittest.TestCase):
         ok, reason = verify.ground_ticker_subject(None, {"title": "x", "summary": "y"})
         self.assertTrue(ok, reason)
 
+    def test_company_revenue_chart_reuses_ticker_grounding(self):
+        # company_revenue_chart is registered as ticker-driven specifically so it inherits this
+        # check for free -- confirm it's actually wired into TICKER_DRIVEN_TYPES.
+        self.assertIn("company_revenue_chart", verify.TICKER_DRIVEN_TYPES)
+
+
+class FredSeriesGroundingTests(unittest.TestCase):
+    def test_matching_series_passes(self):
+        story = {"title": "US inflation cools to 3.1%", "summary": "The Consumer Price Index rose less than expected in June."}
+        ok, reason = verify.ground_fred_series_subject("CPIAUCSL", story)
+        self.assertTrue(ok, reason)
+
+    def test_wrong_series_for_story_is_blocked(self):
+        story = {"title": "Apple unveils new iPhone lineup", "summary": "Apple announced new products today."}
+        ok, reason = verify.ground_fred_series_subject("UNRATE", story)
+        self.assertFalse(ok)
+        self.assertIn("UNRATE", reason)
+
+    def test_unrecognized_series_fails_closed(self):
+        story = {"title": "Fed watches jobs data", "summary": "Unemployment ticked up."}
+        ok, reason = verify.ground_fred_series_subject("MADE_UP_SERIES_ID", story)
+        self.assertFalse(ok)
+        self.assertIn("not a recognized FRED series", reason)
+
+    def test_no_series_is_a_noop(self):
+        ok, reason = verify.ground_fred_series_subject(None, {"title": "x", "summary": "y"})
+        self.assertTrue(ok, reason)
+
+    def test_wired_into_check_visual_relevance(self):
+        story = {"title": "Unemployment rate rises to 4.2%", "summary": "The jobless rate ticked higher last month."}
+        result = {"visual_type": "fred_series_chart", "fred_series": "UNRATE"}
+        new_result, warning = verify.check_visual_relevance(result, story)
+        self.assertEqual(new_result["visual_type"], "fred_series_chart")
+        self.assertIsNone(warning)
+
+    def test_wrong_series_suppressed_through_check_visual_relevance(self):
+        story = {"title": "Apple unveils new iPhone lineup", "summary": "Apple announced new products today."}
+        result = {"visual_type": "fred_series_chart", "fred_series": "UNRATE"}
+        new_result, warning = verify.check_visual_relevance(result, story)
+        self.assertEqual(new_result["visual_type"], "none")
+        self.assertIsNone(new_result["fred_series"])
+        self.assertIsNotNone(warning)
+
 
 class ImageQueryGroundingTests(unittest.TestCase):
     def test_grounded_query_passes(self):

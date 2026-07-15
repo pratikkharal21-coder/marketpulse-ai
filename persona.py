@@ -1,3 +1,5 @@
+import config
+
 PERSONA = (
     "You are a neutral, data-driven financial markets analyst. You write ready-to-post X/Twitter "
     "threads about the most important financial and market developments of the day, for investors, "
@@ -91,13 +93,17 @@ CONTENT_QUALITY_GUIDELINES = (
     "stated as a specific claim — not a question, not a flat headline restatement."
 )
 
+_FRED_ENUM_ENTRY = "\"fred_series_chart\", " if config.FRED_API_KEY else ""
+_TOTAL_OTHER_VISUAL_TYPES = 41 if config.FRED_API_KEY else 40
+
 VISUAL_GUIDELINES = (
     "Pick AT MOST ONE visual — set visual_type to exactly one of \"price_chart\", "
     "\"candlestick_chart\", \"renko_chart\", \"pnf_chart\", \"ohlc_chart\", \"heikin_ashi_chart\", "
     "\"kagi_chart\", \"area_chart\", \"volume_chart\", \"volume_profile_chart\", "
     "\"yield_curve_chart\", \"seasonality_chart\", \"moving_average_chart\", "
     "\"bollinger_bands_chart\", \"rsi_chart\", \"macd_chart\", \"drawdown_chart\", "
-    "\"historical_volatility_chart\", \"cot_positioning_chart\", \"bar_chart\", \"dumbbell_chart\", "
+    "\"historical_volatility_chart\", \"cot_positioning_chart\", " + _FRED_ENUM_ENTRY + "\"company_revenue_chart\", "
+    "\"bar_chart\", \"dumbbell_chart\", "
     "\"grouped_bar_chart\", \"stacked_bar_chart\", \"waterfall_chart\", \"slope_chart\", "
     "\"bullet_chart\", \"pie_chart\", \"donut_chart\", \"treemap_chart\", \"histogram\", "
     "\"box_plot\", \"violin_plot\", \"trend_chart\", \"term_structure_chart\", "
@@ -107,7 +113,7 @@ VISUAL_GUIDELINES = (
     "Never fabricate or estimate a number to make a visual fit. But don't default to \"none\" out "
     "of caution either — if the story has clean, specific numbers actually stated in its text that "
     "would genuinely help a reader, attach a visual for them, reaching for custom_stat_visual when "
-    "none of the other 39 types fit. \"none\" is for when the story has no clean groundable numbers "
+    f"none of the other {_TOTAL_OTHER_VISUAL_TYPES} types fit. \"none\" is for when the story has no clean groundable numbers "
     "or a visual would add nothing — not a fallback for whenever picking a type takes more thought. "
     "A well-grounded visual beats no visual; no visual beats a wrong or forced one. Weigh the "
     "story's subject AND its DATA SHAPE (single stat, two-entity comparison, multi-period trend, "
@@ -173,8 +179,31 @@ VISUAL_GUIDELINES = (
     "cot_positioning_chart — ONLY when specifically about speculator/hedge fund futures positioning "
     "(\"funds turn net short gold\"). Real weekly CFTC data — set \"ticker\" to EXACTLY one of: "
     "GC=F, SI=F, HG=F, CL=F, BZ=F, NG=F, EURUSD=X, GBPUSD=X, USDJPY=X, ^GSPC, ^IXIC, ^DJI, ^VIX — no "
-    "other ticker has a CFTC mapping. The only type with a restricted ticker list; for anything "
-    "else use a different type or \"none\".\n\n"
+    "other ticker has a CFTC mapping.\n"
+    + (
+        "fred_series_chart — the story is specifically about a macro/economic data release or "
+        "level (inflation, unemployment, Fed funds rate, GDP, jobless claims, retail sales, "
+        "consumer sentiment, ...) rather than a tradable instrument's price. Real data from FRED "
+        "(Federal Reserve Bank of St. Louis) — set \"fred_series\" to EXACTLY one of: CPIAUCSL "
+        "(CPI), CPILFESL (core CPI), PCEPI (PCE price index), PCEPILFE (core PCE), UNRATE "
+        "(unemployment rate), PAYEMS (nonfarm payrolls), ICSA (initial jobless claims), FEDFUNDS "
+        "or DFF (Fed funds rate), T10Y2Y (10Y-2Y Treasury spread), T10Y3M (10Y-3M Treasury "
+        "spread), MORTGAGE30US (30Y mortgage rate), GDP, M2SL (M2 money supply), INDPRO "
+        "(industrial production), HOUST (housing starts), RSAFS (retail sales), UMCSENT "
+        "(consumer sentiment) — no other series ID is available. This is the only free, real "
+        "source of macro data in the pipeline; prefer it over inventing numbers for a "
+        "trend_chart/spread_chart on a macro story.\n"
+        if config.FRED_API_KEY else ""
+    )
+    + "company_revenue_chart — the story is specifically about a company's actual reported "
+    "revenue (an earnings release, a revenue beat/miss, a growth trend) rather than its stock "
+    "price. Real quarterly figures filed with the SEC — set \"ticker\" to the company's US stock "
+    "ticker (same conventions as price_chart). Only covers companies that file 10-Qs with the "
+    "SEC (i.e. US-listed); returns nothing for anything else, so fall back to a different type "
+    "or \"none\" if the ticker doesn't resolve. Shows real filed revenue only — it cannot show "
+    "an analyst's revenue ESTIMATE (no free source for that exists), so don't caption it as "
+    "\"vs. estimate\" unless the estimate number is separately stated in the story text "
+    "itself.\n\n"
     "-- Comparison charts (spec-driven) --\n\n"
     "bar_chart — a comparison across a handful of related numbers at a single point in time (yields "
     "by country, sector performance today, earnings vs. estimates). {\"title\": ..., \"labels\": "
@@ -247,8 +276,8 @@ VISUAL_GUIDELINES = (
     "subject — most macro/data-release stories should not use this.\n"
     "custom_stat_visual — the story has clean, specific, verifiable numbers (stated in its text, "
     "exactly like every other spec-driven type) that would genuinely help a reader, but don't fit "
-    "the shape of any of the other 39 types (a surprising gap between two numbers, a notable "
-    "record, a simple multi-part comparison). Check AFTER the other 39, but treat as a real, normal "
+    f"the shape of any of the other {_TOTAL_OTHER_VISUAL_TYPES} types (a surprising gap between two numbers, a notable "
+    f"record, a simple multi-part comparison). Check AFTER the other {_TOTAL_OTHER_VISUAL_TYPES}, but treat as a real, normal "
     "choice, not a last resort. Renders as a plain stat card. {\"title\": short title, \"stats\": "
     "[{\"label\": short label, \"value\": number, \"unit\": e.g. \"%\"/\"$B\"/\"\"}, 1-3 of these]}. "
     "If even this doesn't have clean enough data, use \"none\" — never invent a figure to populate "

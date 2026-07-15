@@ -40,7 +40,15 @@ TICKER_DRIVEN_TYPES = (
     "heikin_ashi_chart", "kagi_chart", "area_chart", "volume_chart", "volume_profile_chart",
     "seasonality_chart", "moving_average_chart", "bollinger_bands_chart", "rsi_chart",
     "macd_chart", "drawdown_chart", "historical_volatility_chart", "cot_positioning_chart",
+    # company_revenue_chart is ticker-driven like the rest -- SEC EDGAR revenue for a US-listed
+    # company, keyed off the same stock ticker -- so it inherits ground_ticker_subject for free.
+    "company_revenue_chart",
 )
+
+# fred_series_chart is macro-driven, not ticker-driven -- a FRED series ID (e.g. "CPIAUCSL")
+# isn't a Yahoo Finance symbol, so it needs its own grounding path (see
+# ground_fred_series_subject) rather than reusing ground_ticker_subject's yfinance lookup.
+MACRO_SERIES_DRIVEN_TYPES = ("fred_series_chart",)
 
 # Every visual_type mapped to the data "shape(s)" it's actually suited to represent. Used by
 # check_shape_match to catch a visual type being force-fit onto a story whose data plainly
@@ -79,6 +87,8 @@ VISUAL_TYPE_SHAPES = {
     # and COT-specific language ("net short", "flipped", "specs piled in") isn't covered by the
     # generic multi_period_trend/flow_over_time keyword signals.
     "cot_positioning_chart": {"multi_period_trend", "flow_over_time", "single_stat"},
+    "fred_series_chart": {"single_stat", "multi_period_trend"},
+    "company_revenue_chart": {"single_stat", "multi_period_trend"},
     "bar_chart": {"two_point_comparison", "ranked_list"},
     "dumbbell_chart": {"two_point_comparison", "ranked_list"},
     "grouped_bar_chart": {"ranked_list", "two_point_comparison"},
@@ -322,6 +332,8 @@ def _field_for_visual_type(visual_type):
         return visual_type
     if visual_type in TICKER_DRIVEN_TYPES:
         return "ticker"
+    if visual_type in MACRO_SERIES_DRIVEN_TYPES:
+        return "fred_series"
     if visual_type == "real_world_image":
         return "image_query"
     return None
@@ -532,6 +544,27 @@ def ground_ticker_subject(ticker, story):
     return False, f"ticker '{ticker}' resolves to '{name}', which shares no grounded terms with the story"
 
 
+def ground_fred_series_subject(series_id, story):
+    """Same purpose as ground_ticker_subject but for FRED series IDs, which aren't Yahoo
+    tickers and so can't reuse the yfinance name lookup -- checks the curated series'
+    plain-English name (FRED_SERIES_NAMES, imported from chart.py so there's a single source of
+    truth) shares a grounded word with the story. An unrecognized series_id fails closed the
+    same way an unmapped ticker does. Returns (ok, reason_or_None)."""
+    if not series_id:
+        return True, None
+
+    from chart import FRED_SERIES_NAMES
+
+    name = FRED_SERIES_NAMES.get(series_id.strip().upper())
+    if name is None:
+        return False, f"'{series_id}' is not a recognized FRED series -- failing closed"
+
+    story_tokens = _tokenize(f"{story.get('title', '')} {story.get('summary', '')}")
+    if _tokenize(name) & story_tokens:
+        return True, None
+    return False, f"FRED series '{series_id}' ('{name}') shares no grounded terms with the story"
+
+
 def ground_image_query(image_query, story):
     """The model supplies a free-text Wikipedia search query for real_world_image visuals;
     require it to share a grounded word with the story before spending a network call on it
@@ -568,6 +601,12 @@ def check_visual_relevance(result, story):
         ok, reason = ground_ticker_subject(result.get("ticker"), story)
         if not ok:
             return _suppress(result, story, reason, field="ticker")
+        return result, None
+
+    if visual_type in MACRO_SERIES_DRIVEN_TYPES:
+        ok, reason = ground_fred_series_subject(result.get("fred_series"), story)
+        if not ok:
+            return _suppress(result, story, reason, field="fred_series")
         return result, None
 
     if visual_type == "real_world_image":

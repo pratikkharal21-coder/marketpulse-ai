@@ -25,6 +25,10 @@ GROQ_API_KEY = _require("GROQ_API_KEY")
 # daily token quota, instead of giving up for the rest of the run. Free at aistudio.google.com.
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-flash-lite-latest")
+# Optional: free API key from fredaccount.stlouisfed.org, powers fred_series_chart (real macro
+# data -- CPI, unemployment, Fed funds rate, ...). Without it, that visual type is unavailable
+# and the model isn't offered it (see generate.py/longform.py's SYSTEM_PROMPT construction).
+FRED_API_KEY = os.environ.get("FRED_API_KEY")
 GMAIL_ADDRESS = _require("GMAIL_ADDRESS")
 GMAIL_APP_PASSWORD = _require("GMAIL_APP_PASSWORD")
 RECIPIENT_EMAIL = _require("RECIPIENT_EMAIL")

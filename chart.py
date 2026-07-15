@@ -18,6 +18,8 @@ import numpy as np
 import yfinance as yf
 from PIL import Image, ImageDraw
 
+import config
+
 logger = logging.getLogger("marketpulse.chart")
 
 WIKI_API_URL = "https://en.wikipedia.org/w/api.php"
@@ -1034,6 +1036,257 @@ def generate_cot_positioning_chart(ticker, label=None, stats_out=None):
             "net_speculative_position": last_net,
             "prev_net_speculative_position": net_spec[-2],
             "open_interest": open_interest[-1],
+            "fetched_at": _utcnow_iso(),
+        })
+    return _save_fig(fig)
+
+
+FRED_API_URL = "https://api.stlouisfed.org/fred/series/observations"
+
+# Curated allow-list: FRED has 800,000+ series, most far too obscure or ambiguous to trust an
+# LLM to pick a valid series ID from memory. Restricted to well-known headline macro series
+# that actually show up in market-news stories, each with a plain-English name used to ground
+# the model's choice against the story text (see ground_fred_series_subject in verify.py).
+FRED_SERIES_NAMES = {
+    "CPIAUCSL": "Consumer Price Index (CPI)",
+    "CPILFESL": "Core Consumer Price Index (Core CPI)",
+    "PCEPI": "PCE Price Index",
+    "PCEPILFE": "Core PCE Price Index",
+    "UNRATE": "Unemployment Rate",
+    "PAYEMS": "Nonfarm Payrolls",
+    "ICSA": "Initial Jobless Claims",
+    "FEDFUNDS": "Federal Funds Rate",
+    "DFF": "Federal Funds Effective Rate",
+    "T10Y2Y": "10-Year minus 2-Year Treasury Yield Spread",
+    "T10Y3M": "10-Year minus 3-Month Treasury Yield Spread",
+    "MORTGAGE30US": "30-Year Fixed Mortgage Rate",
+    "GDP": "Gross Domestic Product (GDP)",
+    "M2SL": "M2 Money Supply",
+    "INDPRO": "Industrial Production Index",
+    "HOUST": "Housing Starts",
+    "RSAFS": "Retail Sales",
+    "UMCSENT": "University of Michigan Consumer Sentiment",
+}
+
+
+def _fetch_fred_series(series_id, observations=24):
+    qs = urllib.parse.urlencode({
+        "series_id": series_id,
+        "api_key": config.FRED_API_KEY,
+        "file_type": "json",
+        "sort_order": "desc",
+        "limit": observations,
+    })
+    req = urllib.request.Request(f"{FRED_API_URL}?{qs}", headers={"User-Agent": WIKI_USER_AGENT})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        payload = json.loads(resp.read())
+    rows = payload.get("observations") or []
+    return list(reversed(rows))  # API returns newest-first; chart wants chronological order
+
+
+def generate_fred_series_chart(series_id, label=None, stats_out=None):
+    """Real economic time series from FRED (Federal Reserve Bank of St. Louis) -- free, requires
+    only a no-cost API key. Only covers the curated instruments in FRED_SERIES_NAMES; returns
+    None for anything else rather than guessing at a series ID. This is the only free, official
+    source of real macro data (CPI, unemployment, Fed funds rate, ...) in the pipeline -- macro
+    stories previously had no live data source at all, forcing the model to either skip a
+    visual or invent numbers for a trend/spread chart."""
+    if not series_id or not config.FRED_API_KEY:
+        return None
+
+    series_id = series_id.strip().upper()
+    series_name = FRED_SERIES_NAMES.get(series_id)
+    if not series_name:
+        logger.warning("No curated FRED series mapping for %s", series_id)
+        return None
+
+    try:
+        rows = _fetch_fred_series(series_id)
+    except Exception as exc:
+        logger.warning("FRED fetch failed for %s: %s", series_id, exc)
+        return None
+
+    try:
+        points = [
+            (datetime.fromisoformat(r["date"]), float(r["value"]))
+            for r in rows if r.get("value") not in (None, ".", "")
+        ]
+    except (KeyError, ValueError, TypeError) as exc:
+        logger.warning("Malformed FRED response for %s: %s", series_id, exc)
+        return None
+
+    if len(points) < 4:
+        logger.warning("Not enough FRED history for %s", series_id)
+        return None
+
+    dates = [p[0] for p in points]
+    values = [p[1] for p in points]
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.6), dpi=140)
+    ax.plot(dates, values, "-", color=BLUE, linewidth=1.8)
+    ax.plot(dates[-1], values[-1], "o", color=BLUE, markersize=6)
+
+    display_name = label or series_name
+    ax.set_title(
+        _wrap_title(f"{display_name}\nLatest: {values[-1]:,.2f}", width=42),
+        fontsize=12.5, fontweight="bold", loc="left", color="#1a1a1a",
+    )
+
+    locator = mdates.AutoDateLocator(minticks=4, maxticks=7)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update({
+            "source": "fred",
+            "fred_series": series_id,
+            "series_name": series_name,
+            "latest_date": dates[-1].isoformat(),
+            "latest_value": values[-1],
+            "prev_value": values[-2],
+            "fetched_at": _utcnow_iso(),
+        })
+    return _save_fig(fig)
+
+
+SEC_TICKER_MAP_URL = "https://www.sec.gov/files/company_tickers.json"
+SEC_COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+
+# Not every filer/period uses the same GAAP revenue tag (especially across the 2018 ASC 606
+# transition) -- try each in priority order until one has usable quarterly data.
+_SEC_REVENUE_TAGS = (
+    "Revenues",
+    "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "RevenueFromContractWithCustomerIncludingAssessedTax",
+    "SalesRevenueNet",
+)
+
+_sec_ticker_cik_map = None
+
+
+def _load_sec_ticker_map():
+    global _sec_ticker_cik_map
+    if _sec_ticker_cik_map is not None:
+        return _sec_ticker_cik_map
+    req = urllib.request.Request(SEC_TICKER_MAP_URL, headers={"User-Agent": WIKI_USER_AGENT})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        raw = json.loads(resp.read())
+    _sec_ticker_cik_map = {row["ticker"].upper(): str(row["cik_str"]).zfill(10) for row in raw.values()}
+    return _sec_ticker_cik_map
+
+
+def _resolve_cik(ticker):
+    try:
+        ticker_map = _load_sec_ticker_map()
+    except Exception as exc:
+        logger.warning("SEC ticker map fetch failed: %s", exc)
+        return None
+    return ticker_map.get((ticker or "").strip().upper())
+
+
+def _extract_quarterly_revenue(facts, max_quarters=6):
+    """Isolates clean, single-quarter revenue figures from a company's full XBRL fact history.
+    Filters to 10-Q filings whose reporting period spans ~1 quarter (80-100 days) -- companies
+    also report cumulative year-to-date figures under the same tag, which would silently
+    overstate revenue if not excluded. Returns None rather than a partial/ambiguous read if
+    fewer than 4 clean quarters are found."""
+    us_gaap = ((facts or {}).get("facts") or {}).get("us-gaap") or {}
+    for tag in _SEC_REVENUE_TAGS:
+        entries = ((us_gaap.get(tag) or {}).get("units") or {}).get("USD") or []
+        by_end = {}
+        for e in entries:
+            try:
+                start = datetime.fromisoformat(e["start"])
+                end = datetime.fromisoformat(e["end"])
+                val = float(e["val"])
+            except (KeyError, ValueError, TypeError):
+                continue
+            if e.get("form") != "10-Q" or not (80 <= (end - start).days <= 100):
+                continue
+            existing = by_end.get(end)
+            if existing is None or e.get("filed", "") > existing["filed"]:
+                by_end[end] = {"end": end, "val": val, "filed": e.get("filed", "")}
+        if len(by_end) >= 4:
+            rows = sorted(by_end.values(), key=lambda r: r["end"])[-max_quarters:]
+            return [(r["end"], r["val"]) for r in rows]
+    return None
+
+
+def generate_company_revenue_chart(ticker, label=None, stats_out=None):
+    """Real quarterly revenue reported to the SEC via XBRL filings -- free, keyless (SEC only
+    requires an identifying User-Agent, no signup). Covers any US-listed company that files
+    10-Qs. Only ever shows figures the company itself actually filed; returns None rather than
+    guessing if the ticker doesn't resolve to a CIK or clean single-quarter revenue can't be
+    isolated (see _extract_quarterly_revenue)."""
+    if not ticker:
+        return None
+    ticker = ticker.strip().upper()
+
+    cik = _resolve_cik(ticker)
+    if not cik:
+        logger.warning("No SEC CIK mapping for ticker %s", ticker)
+        return None
+
+    try:
+        req = urllib.request.Request(
+            SEC_COMPANY_FACTS_URL.format(cik=cik), headers={"User-Agent": WIKI_USER_AGENT},
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            facts = json.loads(resp.read())
+    except Exception as exc:
+        logger.warning("SEC company facts fetch failed for %s (CIK %s): %s", ticker, cik, exc)
+        return None
+
+    quarters = _extract_quarterly_revenue(facts)
+    if not quarters:
+        logger.warning("No clean quarterly revenue data for %s (CIK %s)", ticker, cik)
+        return None
+
+    dates = [q[0] for q in quarters]
+    values = [q[1] for q in quarters]
+    labels = [f"Q{(d.month - 1) // 3 + 1} {d.year}" for d in dates]
+
+    scale, unit = (1e9, "$B") if max(values) >= 1e9 else (1e6, "$M")
+    scaled = [v / scale for v in values]
+
+    fig, ax = plt.subplots(figsize=(6, 3.5), dpi=140)
+    ax.plot(range(len(scaled)), scaled, "o-", color=BLUE, linewidth=1.6, markersize=5)
+
+    display_name = label or ticker
+    ax.set_title(
+        _wrap_title(f"{display_name} quarterly revenue", width=42),
+        fontsize=13, fontweight="bold", loc="left", color="#1a1a1a",
+    )
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels)
+    ax.set_ylabel(unit, fontsize=9, color="#666666")
+    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    if len(labels) > 5:
+        plt.setp(ax.get_xticklabels(), rotation=35, ha="right")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update({
+            "source": "sec_edgar",
+            "ticker": ticker,
+            "cik": cik,
+            "latest_quarter": labels[-1],
+            "latest_revenue": values[-1],
+            "prev_quarter_revenue": values[-2] if len(values) >= 2 else None,
             "fetched_at": _utcnow_iso(),
         })
     return _save_fig(fig)
@@ -2368,6 +2621,10 @@ def resolve_visual(result, label=None, stats_out=None, source=None):
         return generate_historical_volatility_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "cot_positioning_chart":
         return generate_cot_positioning_chart(result.get("ticker"), label=label, stats_out=stats_out)
+    if visual_type == "fred_series_chart":
+        return generate_fred_series_chart(result.get("fred_series"), label=label, stats_out=stats_out)
+    if visual_type == "company_revenue_chart":
+        return generate_company_revenue_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "dumbbell_chart":
         return generate_dumbbell_chart(result.get("dumbbell_chart"))
     if visual_type == "grouped_bar_chart":

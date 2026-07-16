@@ -13,6 +13,7 @@ import ai_client
 import config
 import generate
 import longform
+import persona
 
 
 def _daily_quota_error():
@@ -311,6 +312,33 @@ class AIClientRetryTests(unittest.TestCase):
 
         self.assertEqual(result, {"ok": True})
         self.assertEqual(call_count["n"], 2)
+
+
+class VisualSchemaConsistencyTests(unittest.TestCase):
+    """persona.VISUAL_TYPES is meant to be the single source of truth for which visual_type
+    values are valid -- both the prose menu (VISUAL_GUIDELINES) and the JSON schema in
+    generate.py/longform.py are supposed to be built FROM it. This previously drifted silently:
+    a type retired from the menu was left in the JSON schema, and two new types (fred_series_
+    chart, company_revenue_chart) were fully described in prose but never added to the JSON
+    schema at all, making them unreachable no matter how well VISUAL_GUIDELINES described them.
+    These tests fail loudly if that ever happens again instead of only surfacing in production
+    logs weeks later."""
+
+    def test_every_visual_type_appears_in_the_short_thread_schema(self):
+        for visual_type in persona.VISUAL_TYPES:
+            with self.subTest(visual_type=visual_type):
+                self.assertIn(f'"{visual_type}"', generate.SYSTEM_PROMPT)
+
+    def test_every_visual_type_appears_in_the_deep_dive_schema(self):
+        for visual_type in persona.VISUAL_TYPES:
+            with self.subTest(visual_type=visual_type):
+                self.assertIn(f'"{visual_type}"', longform.SYSTEM_PROMPT)
+
+    def test_retired_types_are_absent_from_both_schemas(self):
+        for visual_type in ("scatter_chart", "bubble_chart", "regression_chart", "correlation_matrix_chart"):
+            with self.subTest(visual_type=visual_type):
+                self.assertNotIn(visual_type, generate.SYSTEM_PROMPT)
+                self.assertNotIn(visual_type, longform.SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":

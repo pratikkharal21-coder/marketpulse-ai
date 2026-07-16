@@ -10,6 +10,21 @@ import state
 import verify
 
 
+class TokenizeTests(unittest.TestCase):
+    def test_possessive_apostrophe_s_is_stripped(self):
+        # Real production case: a custom_stat_visual titled "NVIDIA's AI Expansion" was
+        # suppressed for sharing no grounded terms with a story that plainly mentioned "Nvidia"
+        # -- the possessive form never matched the plain form under set intersection.
+        self.assertIn("nvidia", verify._tokenize("NVIDIA's AI Expansion"))
+        self.assertTrue(verify._tokenize("NVIDIA's") & verify._tokenize("Nvidia reports earnings"))
+
+    def test_trailing_apostrophe_is_stripped(self):
+        self.assertIn("investors", verify._tokenize("investors' confidence rises"))
+
+    def test_non_possessive_words_are_unaffected(self):
+        self.assertEqual(verify._tokenize("Federal Reserve cuts rates"), {"federal", "reserve", "cuts", "rates"})
+
+
 class GroundVisualSpecTests(unittest.TestCase):
     def test_grounded_numbers_pass_through_unchanged(self):
         story = {"title": "Fed cuts rates by 25 basis points", "summary": "The Fed cut its target rate to 4.5% from 4.75%."}

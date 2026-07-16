@@ -1,5 +1,6 @@
 import logging
 import traceback
+from collections import Counter
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
@@ -125,6 +126,18 @@ def run():
             "the Short threads / Deep dives log lines to tell a quiet news day (few triage "
             "survivors) from a quality-filtering day (many blocked_* / generation_error) apart."
         )
+
+    # The Short threads/Deep dives log lines above only surface generation FAILURES
+    # (blocked_*/generation_error) -- they say nothing about visual outcomes among the items
+    # that DID publish successfully. Without this, "not enough visuals" is only diagnosable by
+    # grepping suppression/downgrade messages, which misses items where the model picked "none"
+    # itself and never attempted a visual at all. This makes that split explicit every run.
+    visual_counts = Counter(item.get("visual_type") or "none" for item in threads + deep_dives)
+    with_visual = sum(n for vt, n in visual_counts.items() if vt != "none")
+    logger.info(
+        "Visual outcomes: %d/%d published item(s) have a visual. Breakdown: %s",
+        with_visual, len(threads) + len(deep_dives), dict(visual_counts),
+    )
 
     verify.log_provenance(threads)
     verify.log_provenance(deep_dives)

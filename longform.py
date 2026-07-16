@@ -11,10 +11,15 @@ from persona import (
     PERSONA,
     VALUE_GUIDELINES,
     VISUAL_GUIDELINES,
+    VISUAL_TYPES,
 )
 from regen import maybe_regenerate
 
 logger = logging.getLogger("marketpulse.longform")
+
+# See the identical constant in generate.py -- built from persona.VISUAL_TYPES so this schema
+# can't drift out of sync with which types are actually offered.
+_VISUAL_TYPE_ENUM_JSON = "|".join(f'"{t}"' for t in VISUAL_TYPES) + '|"none"'
 
 SYSTEM_PROMPT = (
     PERSONA
@@ -76,9 +81,10 @@ use to quote-post this thread later — a different angle than the thread itself
 Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 {"thread": ["1/9 ...", "2/9 ...", ...], \
 "hook_shape": "number_led"|"contrarian"|"stakes"|"question"|"surprising_fact", \
-"visual_type": "price_chart"|"candlestick_chart"|"renko_chart"|"pnf_chart"|"ohlc_chart"|"heikin_ashi_chart"|"kagi_chart"|"area_chart"|"volume_chart"|"volume_profile_chart"|"yield_curve_chart"|"seasonality_chart"|"moving_average_chart"|"bollinger_bands_chart"|"rsi_chart"|"macd_chart"|"drawdown_chart"|"historical_volatility_chart"|"cot_positioning_chart"|"bar_chart"|"dumbbell_chart"|"grouped_bar_chart"|"stacked_bar_chart"|"waterfall_chart"|"slope_chart"|"bullet_chart"|"pie_chart"|"donut_chart"|"treemap_chart"|"histogram"|"box_plot"|"violin_plot"|"scatter_chart"|"bubble_chart"|"correlation_matrix_chart"|"regression_chart"|"trend_chart"|"term_structure_chart"|"spread_chart"|"zscore_chart"|"cumulative_flow_chart"|"flowchart"|"real_world_image"|"custom_stat_visual"|"none", \
+"visual_type": """ + _VISUAL_TYPE_ENUM_JSON + """, \
 "visual_confidence": 0-10 (how confidently the chosen visual_type's DATA SHAPE fits this story; a low score drops the visual even if visual_type is set), \
-"ticker": "AAPL" or null (used by price_chart, candlestick_chart, renko_chart, pnf_chart, ohlc_chart, heikin_ashi_chart, kagi_chart, area_chart, volume_chart, volume_profile_chart, seasonality_chart, moving_average_chart, bollinger_bands_chart, rsi_chart, macd_chart, drawdown_chart, historical_volatility_chart; for cot_positioning_chart, ticker MUST be exactly one of GC=F, SI=F, HG=F, CL=F, BZ=F, NG=F, EURUSD=X, GBPUSD=X, USDJPY=X, ^GSPC, ^IXIC, ^DJI, ^VIX -- any other ticker returns no chart), \
+"ticker": "AAPL" or null (used by price_chart, candlestick_chart, renko_chart, pnf_chart, ohlc_chart, heikin_ashi_chart, kagi_chart, area_chart, volume_chart, volume_profile_chart, seasonality_chart, moving_average_chart, bollinger_bands_chart, rsi_chart, macd_chart, drawdown_chart, historical_volatility_chart, company_revenue_chart; for cot_positioning_chart, ticker MUST be exactly one of GC=F, SI=F, HG=F, CL=F, BZ=F, NG=F, EURUSD=X, GBPUSD=X, USDJPY=X, ^GSPC, ^IXIC, ^DJI, ^VIX -- any other ticker returns no chart), \
+"fred_series": "CPIAUCSL" or null (used ONLY by fred_series_chart -- MUST be exactly one of the series IDs listed in the fred_series_chart guidance above; any other ID returns no chart), \
 "bar_chart": {"title": "...", "labels": [...], "values": [...], "unit": "...", "orientation": "vertical"|"horizontal"} or null, \
 "dumbbell_chart": {"title": "...", "labels": [...], "start_values": [...], "end_values": [...], "start_label": "...", "end_label": "...", "unit": "..."} or null, \
 "grouped_bar_chart": {"title": "...", "labels": [...], "series": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
@@ -92,10 +98,6 @@ Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 "histogram": {"title": "...", "values": [...], "unit": "..."} or null, \
 "box_plot": {"title": "...", "groups": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
 "violin_plot": {"title": "...", "groups": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
-"scatter_chart": {"title": "...", "x_label": "...", "y_label": "...", "x_values": [...], "y_values": [...]} or null, \
-"bubble_chart": {"title": "...", "x_label": "...", "y_label": "...", "x_values": [...], "y_values": [...], "sizes": [...], "labels": [...]} or null, \
-"correlation_matrix_chart": {"title": "...", "labels": [...], "matrix": [[...], ...]} or null, \
-"regression_chart": {"title": "...", "x_label": "...", "y_label": "...", "x_values": [...], "y_values": [...]} or null, \
 "trend_chart": {"title": "...", "labels": [...], "values": [...], "fit": "linear"|"cubic", "unit": "..."} or null, \
 "term_structure_chart": {"title": "...", "labels": [...], "values": [...], "compare_values": [...], "compare_label": "...", "unit": "..."} or null, \
 "spread_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \

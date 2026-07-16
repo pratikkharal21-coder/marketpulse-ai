@@ -93,22 +93,32 @@ CONTENT_QUALITY_GUIDELINES = (
     "stated as a specific claim — not a question, not a flat headline restatement."
 )
 
-_FRED_ENUM_ENTRY = "\"fred_series_chart\", " if config.FRED_API_KEY else ""
-_TOTAL_OTHER_VISUAL_TYPES = 41 if config.FRED_API_KEY else 40
+# Single source of truth for every valid visual_type -- both the prose menu below (via
+# VISUAL_GUIDELINES) and the JSON schema in generate.py/longform.py are built FROM this tuple,
+# rather than each keeping its own separately-typed-out copy. That duplication is exactly what
+# let the JSON schema drift out of sync with this list in the past (retired types left in the
+# schema after being removed here; new types added here but never added to the schema, making
+# them silently unreachable no matter how well VISUAL_GUIDELINES described them) -- changing a
+# type now only requires editing this one tuple.
+VISUAL_TYPES = (
+    "price_chart", "candlestick_chart", "renko_chart", "pnf_chart", "ohlc_chart",
+    "heikin_ashi_chart", "kagi_chart", "area_chart", "volume_chart", "volume_profile_chart",
+    "yield_curve_chart", "seasonality_chart", "moving_average_chart", "bollinger_bands_chart",
+    "rsi_chart", "macd_chart", "drawdown_chart", "historical_volatility_chart",
+    "cot_positioning_chart",
+    *(("fred_series_chart",) if config.FRED_API_KEY else ()),
+    "company_revenue_chart", "bar_chart", "dumbbell_chart", "grouped_bar_chart",
+    "stacked_bar_chart", "waterfall_chart", "slope_chart", "bullet_chart", "pie_chart",
+    "donut_chart", "treemap_chart", "histogram", "box_plot", "violin_plot", "trend_chart",
+    "term_structure_chart", "spread_chart", "zscore_chart", "cumulative_flow_chart",
+    "flowchart", "real_world_image", "custom_stat_visual",
+)
+_TOTAL_OTHER_VISUAL_TYPES = len(VISUAL_TYPES) - 1  # minus custom_stat_visual itself
+_VISUAL_TYPE_ENUM_TEXT = ", ".join(f'"{t}"' for t in VISUAL_TYPES[:-1]) + f', "{VISUAL_TYPES[-1]}", or "none"'
 
 VISUAL_GUIDELINES = (
-    "Pick AT MOST ONE visual — set visual_type to exactly one of \"price_chart\", "
-    "\"candlestick_chart\", \"renko_chart\", \"pnf_chart\", \"ohlc_chart\", \"heikin_ashi_chart\", "
-    "\"kagi_chart\", \"area_chart\", \"volume_chart\", \"volume_profile_chart\", "
-    "\"yield_curve_chart\", \"seasonality_chart\", \"moving_average_chart\", "
-    "\"bollinger_bands_chart\", \"rsi_chart\", \"macd_chart\", \"drawdown_chart\", "
-    "\"historical_volatility_chart\", \"cot_positioning_chart\", " + _FRED_ENUM_ENTRY + "\"company_revenue_chart\", "
-    "\"bar_chart\", \"dumbbell_chart\", "
-    "\"grouped_bar_chart\", \"stacked_bar_chart\", \"waterfall_chart\", \"slope_chart\", "
-    "\"bullet_chart\", \"pie_chart\", \"donut_chart\", \"treemap_chart\", \"histogram\", "
-    "\"box_plot\", \"violin_plot\", \"trend_chart\", \"term_structure_chart\", "
-    "\"spread_chart\", \"zscore_chart\", \"cumulative_flow_chart\", \"flowchart\", "
-    "\"real_world_image\", \"custom_stat_visual\", or \"none\". Populate only the matching data "
+    "Pick AT MOST ONE visual — set visual_type to exactly one of "
+    + _VISUAL_TYPE_ENUM_TEXT + ". Populate only the matching data "
     "field; leave all others null.\n\n"
     "Never fabricate or estimate a number to make a visual fit. But don't default to \"none\" out "
     "of caution either — if the story has clean, specific numbers actually stated in its text that "

@@ -259,7 +259,20 @@ _GENERIC_CHART_VOCAB = frozenset("""
 
 def _tokenize(text):
     words = re.findall(r"[a-zA-Z][a-zA-Z\-']{2,}", (text or "").lower())
-    return {w for w in words if w not in _STOPWORDS}
+    # Strip a trailing possessive ("nvidia's" -> "nvidia", "investors'" -> "investors") so the
+    # same entity mentioned possessively in one place (a chart title) and plainly in another
+    # (the story text) still overlaps -- every grounding check in this module (title, ticker,
+    # causal claims, image queries, FRED series) is built on this function, so an unstripped
+    # possessive silently produces a false "shares no grounded terms" mismatch anywhere the
+    # source material happens to use 's.
+    normalized = []
+    for w in words:
+        if w.endswith("'s"):
+            w = w[:-2]
+        elif w.endswith("'"):
+            w = w[:-1]
+        normalized.append(w)
+    return {w for w in normalized if w not in _STOPWORDS}
 
 
 def _extract_text_numbers(text):

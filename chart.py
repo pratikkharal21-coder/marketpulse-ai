@@ -1292,6 +1292,112 @@ def generate_company_revenue_chart(ticker, label=None, stats_out=None):
     return _save_fig(fig)
 
 
+COINGECKO_MARKET_CHART_URL = "https://api.coingecko.com/api/v3/coins/{id}/market_chart"
+
+# Curated, not derived from a live symbol search: CoinGecko's own /coins/list shows multiple
+# DIFFERENT coins (including imitation/scam tokens) sharing the same 3-4 letter symbol -- e.g.
+# "btc" alone matches "bitcoin" AND "bitcoin-ai-2" AND others. Resolving a ticker to a
+# CoinGecko ID via live symbol lookup risks silently charting the wrong coin. Every ID below
+# was individually verified against the real API before being hardcoded here. Keyed by the same
+# Yahoo-style ticker convention (BTC-USD, ETH-USD, ...) already used for price_chart/
+# candlestick_chart/etc., so the model doesn't need to learn a second ticker scheme.
+COINGECKO_IDS = {
+    "BTC-USD": "bitcoin",
+    "ETH-USD": "ethereum",
+    "SOL-USD": "solana",
+    "XRP-USD": "ripple",
+    "ADA-USD": "cardano",
+    "DOGE-USD": "dogecoin",
+    "BNB-USD": "binancecoin",
+    "AVAX-USD": "avalanche-2",
+    "DOT-USD": "polkadot",
+    "LINK-USD": "chainlink",
+    "MATIC-USD": "matic-network",
+    "LTC-USD": "litecoin",
+}
+
+
+def _fetch_coingecko_market_chart(coingecko_id, days=30):
+    qs = urllib.parse.urlencode({"vs_currency": "usd", "days": days})
+    req = urllib.request.Request(
+        f"{COINGECKO_MARKET_CHART_URL.format(id=coingecko_id)}?{qs}",
+        headers={"User-Agent": WIKI_USER_AGENT},
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def generate_crypto_market_cap_chart(ticker, label=None, stats_out=None):
+    """Real market capitalization history from CoinGecko -- free, keyless. Distinct from
+    price_chart/candlestick_chart (which show PRICE): this is for stories about a coin's
+    valuation or ranking specifically (e.g. "X becomes a top-10 crypto by market cap", "X's
+    market cap surpasses $Y billion"), which yfinance has no data for at all. Only covers the
+    curated instruments in COINGECKO_IDS; returns None for anything else rather than guessing
+    at a CoinGecko ID."""
+    if not ticker:
+        return None
+
+    ticker = ticker.strip().upper()
+    coingecko_id = COINGECKO_IDS.get(ticker)
+    if not coingecko_id:
+        logger.warning("No CoinGecko ID mapping for ticker %s", ticker)
+        return None
+
+    try:
+        payload = _fetch_coingecko_market_chart(coingecko_id)
+    except Exception as exc:
+        logger.warning("CoinGecko fetch failed for %s (%s): %s", ticker, coingecko_id, exc)
+        return None
+
+    rows = payload.get("market_caps") or []
+    if len(rows) < 4:
+        logger.warning("Not enough CoinGecko market cap history for %s (%s)", ticker, coingecko_id)
+        return None
+
+    try:
+        dates = [datetime.fromtimestamp(ms / 1000, tz=timezone.utc) for ms, _ in rows]
+        market_caps = [float(v) for _, v in rows]
+    except (TypeError, ValueError, IndexError) as exc:
+        logger.warning("Malformed CoinGecko response for %s (%s): %s", ticker, coingecko_id, exc)
+        return None
+
+    scale, unit = (1e12, "$T") if market_caps[-1] >= 1e12 else (1e9, "$B")
+    scaled = [v / scale for v in market_caps]
+
+    fig, ax = plt.subplots(figsize=(6.5, 3.6), dpi=140)
+    ax.plot(dates, scaled, "-", color=BLUE, linewidth=1.8)
+    ax.fill_between(dates, scaled, min(scaled), color=BLUE, alpha=0.08)
+
+    display_name = label or coingecko_id.replace("-", " ").title()
+    ax.set_title(
+        _wrap_title(f"{display_name} market cap\nLatest: {unit}{scaled[-1]:,.2f}", width=42),
+        fontsize=12.5, fontweight="bold", loc="left", color="#1a1a1a",
+    )
+
+    locator = mdates.AutoDateLocator(minticks=4, maxticks=7)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
+    ax.grid(True, color=GRID_COLOR, linewidth=0.8)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.tick_params(axis="x", labelsize=8, colors="#666666")
+    ax.tick_params(axis="y", labelsize=8, colors="#666666")
+    fig.patch.set_facecolor("white")
+
+    fig.tight_layout()
+    if stats_out is not None:
+        stats_out.update({
+            "source": "coingecko",
+            "ticker": ticker,
+            "coingecko_id": coingecko_id,
+            "latest_market_cap": market_caps[-1],
+            "prev_market_cap": market_caps[-2],
+            "fetched_at": _utcnow_iso(),
+        })
+    return _save_fig(fig)
+
+
 def _caption_image(image_bytes, title):
     try:
         img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
@@ -2625,6 +2731,8 @@ def resolve_visual(result, label=None, stats_out=None, source=None):
         return generate_fred_series_chart(result.get("fred_series"), label=label, stats_out=stats_out)
     if visual_type == "company_revenue_chart":
         return generate_company_revenue_chart(result.get("ticker"), label=label, stats_out=stats_out)
+    if visual_type == "crypto_market_cap_chart":
+        return generate_crypto_market_cap_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "dumbbell_chart":
         return generate_dumbbell_chart(result.get("dumbbell_chart"))
     if visual_type == "grouped_bar_chart":

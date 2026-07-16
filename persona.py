@@ -107,7 +107,7 @@ VISUAL_TYPES = (
     "rsi_chart", "macd_chart", "drawdown_chart", "historical_volatility_chart",
     "cot_positioning_chart",
     *(("fred_series_chart",) if config.FRED_API_KEY else ()),
-    "company_revenue_chart", "bar_chart", "dumbbell_chart", "grouped_bar_chart",
+    "company_revenue_chart", "crypto_market_cap_chart", "bar_chart", "dumbbell_chart", "grouped_bar_chart",
     "stacked_bar_chart", "waterfall_chart", "slope_chart", "bullet_chart", "pie_chart",
     "donut_chart", "treemap_chart", "histogram", "box_plot", "violin_plot", "trend_chart",
     "term_structure_chart", "spread_chart", "zscore_chart", "cumulative_flow_chart",
@@ -213,7 +213,13 @@ VISUAL_GUIDELINES = (
     "or \"none\" if the ticker doesn't resolve. Shows real filed revenue only — it cannot show "
     "an analyst's revenue ESTIMATE (no free source for that exists), so don't caption it as "
     "\"vs. estimate\" unless the estimate number is separately stated in the story text "
-    "itself.\n\n"
+    "itself.\n"
+    "crypto_market_cap_chart — the story is specifically about a cryptocurrency's market "
+    "capitalization or valuation ranking (\"X becomes a top-10 crypto\", \"X's market cap tops "
+    "$Y billion\") rather than its price move — use price_chart/candlestick_chart for a plain "
+    "price story instead. Real data from CoinGecko — set \"ticker\" to EXACTLY one of: BTC-USD, "
+    "ETH-USD, SOL-USD, XRP-USD, ADA-USD, DOGE-USD, BNB-USD, AVAX-USD, DOT-USD, LINK-USD, "
+    "MATIC-USD, LTC-USD — no other ticker has a mapping.\n\n"
     "-- Comparison charts (spec-driven) --\n\n"
     "bar_chart — a comparison across a handful of related numbers at a single point in time (yields "
     "by country, sector performance today, earnings vs. estimates). {\"title\": ..., \"labels\": "

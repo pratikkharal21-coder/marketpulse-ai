@@ -43,6 +43,9 @@ TICKER_DRIVEN_TYPES = (
     # company_revenue_chart is ticker-driven like the rest -- SEC EDGAR revenue for a US-listed
     # company, keyed off the same stock ticker -- so it inherits ground_ticker_subject for free.
     "company_revenue_chart",
+    # Same reasoning: crypto_market_cap_chart is keyed off the same BTC-USD/ETH-USD-style
+    # ticker convention as price_chart, so it also inherits ground_ticker_subject for free.
+    "crypto_market_cap_chart",
 )
 
 # fred_series_chart is macro-driven, not ticker-driven -- a FRED series ID (e.g. "CPIAUCSL")
@@ -89,6 +92,7 @@ VISUAL_TYPE_SHAPES = {
     "cot_positioning_chart": {"multi_period_trend", "flow_over_time", "single_stat"},
     "fred_series_chart": {"single_stat", "multi_period_trend"},
     "company_revenue_chart": {"single_stat", "multi_period_trend"},
+    "crypto_market_cap_chart": {"single_stat", "multi_period_trend"},
     "bar_chart": {"two_point_comparison", "ranked_list"},
     "dumbbell_chart": {"two_point_comparison", "ranked_list"},
     "grouped_bar_chart": {"ranked_list", "two_point_comparison"},

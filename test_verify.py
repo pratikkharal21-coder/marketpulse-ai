@@ -299,6 +299,9 @@ class TickerSubjectGroundingTests(unittest.TestCase):
         # check for free -- confirm it's actually wired into TICKER_DRIVEN_TYPES.
         self.assertIn("company_revenue_chart", verify.TICKER_DRIVEN_TYPES)
 
+    def test_crypto_market_cap_chart_reuses_ticker_grounding(self):
+        self.assertIn("crypto_market_cap_chart", verify.TICKER_DRIVEN_TYPES)
+
 
 class FredSeriesGroundingTests(unittest.TestCase):
     def test_matching_series_passes(self):

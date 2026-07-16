@@ -223,6 +223,52 @@ class FredSeriesChartTests(unittest.TestCase):
         self.assertIsNotNone(img)
 
 
+def _synthetic_coingecko_market_chart(n=30, start_cap=1.0e12):
+    return {"market_caps": [
+        [1700000000000 + i * 86400000, start_cap + i * 1e9] for i in range(n)
+    ]}
+
+
+class CryptoMarketCapChartTests(unittest.TestCase):
+    def test_renders_for_a_mapped_ticker_with_real_math(self):
+        payload = _synthetic_coingecko_market_chart()
+        with patch("chart._fetch_coingecko_market_chart", return_value=payload):
+            stats = {}
+            img = chart.generate_crypto_market_cap_chart("BTC-USD", label="Bitcoin", stats_out=stats)
+        self.assertIsNotNone(img)
+        self.assertEqual(stats["coingecko_id"], "bitcoin")
+        self.assertEqual(stats["source"], "coingecko")
+        self.assertEqual(stats["latest_market_cap"], payload["market_caps"][-1][1])
+
+    def test_unmapped_ticker_returns_none(self):
+        self.assertIsNone(chart.generate_crypto_market_cap_chart("SHIB-USD"))
+
+    def test_no_ticker_returns_none(self):
+        self.assertIsNone(chart.generate_crypto_market_cap_chart(None))
+
+    def test_fetch_failure_returns_none_not_a_crash(self):
+        with patch("chart._fetch_coingecko_market_chart", side_effect=TimeoutError("simulated network failure")):
+            self.assertIsNone(chart.generate_crypto_market_cap_chart("BTC-USD"))
+
+    def test_too_few_points_returns_none(self):
+        with patch("chart._fetch_coingecko_market_chart", return_value=_synthetic_coingecko_market_chart(n=2)):
+            self.assertIsNone(chart.generate_crypto_market_cap_chart("BTC-USD"))
+
+    def test_malformed_response_returns_none_not_a_crash(self):
+        with patch("chart._fetch_coingecko_market_chart", return_value={"market_caps": [[1, "not-a-number"]] * 10}):
+            self.assertIsNone(chart.generate_crypto_market_cap_chart("BTC-USD"))
+
+    def test_dispatches_through_resolve_visual(self):
+        with patch("chart._fetch_coingecko_market_chart", return_value=_synthetic_coingecko_market_chart()):
+            result = {"visual_type": "crypto_market_cap_chart", "ticker": "ETH-USD"}
+            img = chart.resolve_visual(result, label="Ethereum")
+        self.assertIsNotNone(img)
+
+    def test_every_curated_ticker_has_a_distinct_coingecko_id(self):
+        ids = list(chart.COINGECKO_IDS.values())
+        self.assertEqual(len(ids), len(set(ids)), "duplicate CoinGecko ID mapped from two tickers")
+
+
 def _synthetic_sec_facts(n_quarters=6, start_val=9_000_000_000):
     entries = []
     for i in range(n_quarters):

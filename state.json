@@ -113,18 +113,25 @@
     "510fbf2cedc61e3487b72bd794a7150f8a844f4e18abf92412d27d5f7e0ae887": "2026-07-17T13:09:08.434632+00:00",
     "8c2a7cb1a7cd96c2bc3c1c753df3880e8b474c13d90561e3883929d5a876901f": "2026-07-17T13:09:08.434632+00:00",
     "334b3d491a6b91c46a94ee7f8188e88d0bb5f1ab66b2975ec01833802f61e811": "2026-07-17T13:09:08.434632+00:00",
-    "e8b33bcdace3ea2d0eb130be841acea0ec44dab646490856d652a10369d4f850": "2026-07-17T13:09:08.434632+00:00"
+    "e8b33bcdace3ea2d0eb130be841acea0ec44dab646490856d652a10369d4f850": "2026-07-17T13:09:08.434632+00:00",
+    "58cccba971473278e9b8a9614d5e0e04e4da2067228123e9b24f43dfd2e9897c": "2026-07-17T16:53:49.094305+00:00",
+    "7f1837a1c523d50f8a0073fc786c5679ac224c7b325f5546fb40619b0a1aca01": "2026-07-17T16:53:49.094305+00:00",
+    "bc598c1ba255001385a08723a35ccef66e1a666075a4d3ef647389a3a2e54d69": "2026-07-17T16:53:49.094305+00:00",
+    "c20cba8dcf8d9415c929c984ff094044c2edf00a8528ccf298dcf348a1be9b20": "2026-07-17T16:53:49.094305+00:00",
+    "e793c0e08fb6f054238e4f1d3cea67ef7a77582ddcc66c9a73b3fcdcaaf4a3cd": "2026-07-17T16:53:49.094305+00:00",
+    "dd25b80eca3a6414787f1c33a68bf19a2ce804a8c4b2ff255de119318176ac12": "2026-07-17T16:53:49.094305+00:00",
+    "737a0e75b31ceaa941d620e30dac2760092ada4e2319461bb6b37482b65f6fde": "2026-07-17T16:53:49.094305+00:00"
   },
   "recent_visuals": [
-    "company_revenue_chart",
-    "custom_stat_visual",
-    "price_chart",
     "custom_stat_visual",
     "fred_series_chart",
     "custom_stat_visual",
     "custom_stat_visual",
     "rsi_chart",
     "price_chart",
-    "drawdown_chart"
+    "drawdown_chart",
+    "company_revenue_chart",
+    "crypto_market_cap_chart",
+    "price_chart"
   ]
 }

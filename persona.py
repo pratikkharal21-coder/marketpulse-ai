@@ -109,7 +109,7 @@ VISUAL_TYPES = (
     *(("fred_series_chart",) if config.FRED_API_KEY else ()),
     "company_revenue_chart", "crypto_market_cap_chart", "bar_chart", "dumbbell_chart", "grouped_bar_chart",
     "stacked_bar_chart", "waterfall_chart", "slope_chart", "bullet_chart", "pie_chart",
-    "donut_chart", "treemap_chart", "histogram", "box_plot", "violin_plot", "trend_chart",
+    "donut_chart", "treemap_chart", "histogram", "box_plot", "violin_plot",
     "term_structure_chart", "spread_chart", "zscore_chart", "cumulative_flow_chart",
     "flowchart", "real_world_image", "custom_stat_visual",
 )
@@ -202,7 +202,7 @@ VISUAL_GUIDELINES = (
         "(industrial production), HOUST (housing starts), RSAFS (retail sales), UMCSENT "
         "(consumer sentiment) — no other series ID is available. This is the only free, real "
         "source of macro data in the pipeline; prefer it over inventing numbers for a "
-        "trend_chart/spread_chart on a macro story.\n"
+        "spread_chart or other spec-driven type on a macro story.\n"
         if config.FRED_API_KEY else ""
     )
     + "company_revenue_chart — the story is specifically about a company's actual reported "
@@ -258,11 +258,6 @@ VISUAL_GUIDELINES = (
     "multiples by region). box_plot for a compact median/quartile/outlier summary; violin_plot when "
     "the shape itself (bimodal, skewed) is the point. {\"title\": ..., \"groups\": [{\"name\": ..., "
     "\"values\": [5+ numbers]}, ...], \"unit\": \"\"}.\n\n"
-    "trend_chart — how a metric evolved over several periods AND whether the trajectory is steady "
-    "or accelerating/curving (inflation prints over months, revenue over years). {\"title\": ..., "
-    "\"labels\": [3-8 period labels, chronological], \"values\": [matching numbers], \"fit\": "
-    "\"linear\" if steady/even change or \"cubic\" if clearly accelerating/decelerating/reversing, "
-    "\"unit\": e.g. \"%\"/\"$B\"/\"\"}.\n\n"
     "-- Macro/yield-specific charts (spec-driven) --\n\n"
     "term_structure_chart — a rate/metric across several maturities or tenors (bond yields by "
     "maturity, futures curve) — more general than yield_curve_chart since you supply the tenors "

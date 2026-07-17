@@ -14,6 +14,7 @@ import config
 import generate
 import longform
 import persona
+import verify
 
 
 def _daily_quota_error():
@@ -335,10 +336,10 @@ class VisualSchemaConsistencyTests(unittest.TestCase):
                 self.assertIn(f'"{visual_type}"', longform.SYSTEM_PROMPT)
 
     def test_retired_types_are_absent_from_both_schemas(self):
-        for visual_type in ("scatter_chart", "bubble_chart", "regression_chart", "correlation_matrix_chart"):
+        for visual_type in verify.RETIRED_VISUAL_TYPES:
             with self.subTest(visual_type=visual_type):
-                self.assertNotIn(visual_type, generate.SYSTEM_PROMPT)
-                self.assertNotIn(visual_type, longform.SYSTEM_PROMPT)
+                self.assertNotIn(f'"{visual_type}"', generate.SYSTEM_PROMPT)
+                self.assertNotIn(f'"{visual_type}"', longform.SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":

@@ -21,18 +21,23 @@ SPEC_DRIVEN_FIELDS = (
     "cumulative_flow_chart", "custom_stat_visual",
 )
 
-# Retired from the persona.py menu (2026-07-15): 8 days of real production logs showed these
-# four picked often but NEVER once with genuinely grounded data -- scatter_chart alone
-# accounted for 14 fully-fabricated attempts (every single one 100% ungrounded, often
-# suspiciously round sequences like [50, 60, 70]) across just 8 runs, with zero successes. A
-# scatter/bubble/regression/correlation-matrix chart needs 3+ real paired observations, which
-# short news article text essentially never states -- the model kept spending its one visual
-# attempt on a type that was always going to be rejected. Kept here (not deleted from
-# SPEC_DRIVEN_FIELDS/chart.py) as a hard, unconditional block so the existing grounding
-# machinery still applies as a second layer if the model ever emits one of these anyway despite
-# not being offered in the prompt -- an LLM doesn't always respect a stated enum perfectly.
+# Retired from the persona.py menu (2026-07-15, trend_chart added 2026-07-17): real production
+# logs across more than a week showed these picked often but NEVER once with genuinely grounded
+# data. scatter_chart alone accounted for 14 fully-fabricated attempts (every single one 100%
+# ungrounded, often suspiciously round sequences like [50, 60, 70]) across just 8 runs, with
+# zero successes. trend_chart showed the identical pattern in every run checked afterward too
+# (4/4 runs on 2026-07-17 alone, always 100% ungrounded) -- it needs a multi-point chronological
+# sequence that short news article text essentially never states inline, so the model kept
+# inventing one. Real alternatives now cover its legitimate former use cases without the
+# fabrication risk: fred_series_chart for macro trends, company_revenue_chart for revenue
+# trends, and the ticker-driven price/moving-average charts for price trends. Kept here (not
+# deleted from SPEC_DRIVEN_FIELDS/chart.py) as a hard, unconditional block so the existing
+# grounding machinery still applies as a second layer if the model ever emits one of these
+# anyway despite not being offered in the prompt -- an LLM doesn't always respect a stated enum
+# perfectly.
 RETIRED_VISUAL_TYPES = frozenset({
     "scatter_chart", "bubble_chart", "regression_chart", "correlation_matrix_chart",
+    "trend_chart",
 })
 
 TICKER_DRIVEN_TYPES = (

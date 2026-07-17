@@ -98,7 +98,6 @@ Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 "histogram": {"title": "...", "values": [...], "unit": "..."} or null, \
 "box_plot": {"title": "...", "groups": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
 "violin_plot": {"title": "...", "groups": [{"name": "...", "values": [...]}, ...], "unit": "..."} or null, \
-"trend_chart": {"title": "...", "labels": [...], "values": [...], "fit": "linear"|"cubic", "unit": "..."} or null, \
 "term_structure_chart": {"title": "...", "labels": [...], "values": [...], "compare_values": [...], "compare_label": "...", "unit": "..."} or null, \
 "spread_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \
 "zscore_chart": {"title": "...", "labels": [...], "values": [...], "unit": "..."} or null, \

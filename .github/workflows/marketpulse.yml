@@ -1,10 +1,22 @@
 name: MarketPulse AI
 
 on:
-  # Triggered externally by cron-job.org (job IDs 7968113 / 7968114 / 7968124)
-  # which POSTs to the GitHub Actions dispatch endpoint at the exact minute,
-  # with Europe/London timezone awareness (auto-handles BST/GMT).
-  # Schedule: 14:00 daily, 18:00 daily, 21:00 Mon-Fri only.
+  # Runs on GitHub's own scheduler -- no external cron-job.org account or GitHub personal
+  # access token required (the previous setup relied on both; the token had to be manually
+  # renewed on expiry or every scheduled run would silently stop firing).
+  #
+  # GitHub Actions cron always runs in UTC, with no timezone awareness -- unlike the previous
+  # cron-job.org setup, these times do NOT auto-adjust for BST/GMT. Below is currently
+  # 14:00/18:00/21:00 Europe/London during British Summer Time (UTC+1). When BST ends (usually
+  # the last Sunday of October) and clocks go back to GMT (UTC+0), London wall-clock time for
+  # these runs will drift an hour earlier (13:00/17:00/20:00) until manually shifted back by
+  # +1 hour here; the same adjustment happens in reverse when BST resumes in late March.
+  schedule:
+    - cron: "0 13 * * *"    # 14:00 Europe/London (BST) daily
+    - cron: "0 17 * * *"    # 18:00 Europe/London (BST) daily
+    - cron: "0 20 * * 1-5"  # 21:00 Europe/London (BST) weekdays only
+  # Kept for manually triggering a run on demand (e.g. testing, or re-running after a failure)
+  # without needing to wait for the next scheduled time.
   workflow_dispatch: {}
 
 permissions:

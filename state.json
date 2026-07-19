@@ -164,11 +164,14 @@
     "537cd75ce1ca8e59f9bec1df3594e0e9be6b26c30d11e7edb3d70cbf373d98ee": "2026-07-18T20:11:29.877703+00:00",
     "44b4c6a6a1fcda6c70e6983c44f8612e891ca2d635dc71aaa12d11dadb26f0e5": "2026-07-18T20:11:29.877703+00:00",
     "29f179694fb6e02536143c85862b18c663064148f9407e2c340117761b5b9daa": "2026-07-18T20:11:29.877703+00:00",
-    "ee9be50b4ce5c635d80c7fdbda1bbc6640c2158eabb59fd1a8dea33a1e95b3ea": "2026-07-18T20:11:29.877703+00:00"
+    "ee9be50b4ce5c635d80c7fdbda1bbc6640c2158eabb59fd1a8dea33a1e95b3ea": "2026-07-18T20:11:29.877703+00:00",
+    "8434e0df1c8b2d3bc05bb6bcd93e83147d8c92a1e418165a3104df9669bbc49e": "2026-07-19T13:08:15.604047+00:00",
+    "f40598c18ec62dbc7c1a90ad9cd088971d2932dd60513557ea08f4fee92090d1": "2026-07-19T13:08:15.604047+00:00",
+    "99554fc242a3b1037fa38c8e5eed5d510aac6bac48a25974ac267d3dd02c3bb2": "2026-07-19T13:08:15.604047+00:00",
+    "6a6804fa86a41efc14a8a5920ca93d328034fda5bf0c15e33be43acc4d40a07a": "2026-07-19T13:08:15.604047+00:00",
+    "6585b4bf8f12d279aca04ab0bdbee5afa88713fe019be58f3cd67a37dd03faa2": "2026-07-19T13:08:15.604047+00:00"
   },
   "recent_visuals": [
-    "fred_series_chart",
-    "custom_stat_visual",
     "custom_stat_visual",
     "flowchart",
     "price_chart",
@@ -176,6 +179,8 @@
     "custom_stat_visual",
     "custom_stat_visual",
     "crypto_market_cap_chart",
-    "custom_stat_visual"
+    "custom_stat_visual",
+    "price_chart",
+    "company_revenue_chart"
   ]
 }

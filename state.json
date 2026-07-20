@@ -186,18 +186,23 @@
     "e960af3b74a7a71cbe15b1f44b42f060d1e761154774666da8ff2a896d1cba16": "2026-07-20T19:19:11.138447+00:00",
     "cf8fee8f0454256427fcd13416ff1a862e6155b79ed3bd8452d23fa7b305ab23": "2026-07-20T19:19:11.138447+00:00",
     "9ef858f38ab3910660aa3da896ab7cdaf48f3472fb3a03ca02ffea8dadc84e9a": "2026-07-20T19:19:11.138447+00:00",
-    "159bb3acb85a282d91aedfd44d86945e40f80d6c4c554e1cdfff33729084e652": "2026-07-20T19:19:11.138447+00:00"
+    "159bb3acb85a282d91aedfd44d86945e40f80d6c4c554e1cdfff33729084e652": "2026-07-20T19:19:11.138447+00:00",
+    "7a04cbf559e943a599ab65ea4114c469c8f2f76833cc1160ab420fd615689453": "2026-07-20T20:04:06.465773+00:00",
+    "daf713f8e7a294ea43a48cfb42fcfb91d031bb2860b93b042a8d72280f7d344f": "2026-07-20T20:04:06.465773+00:00",
+    "9314284dc5db108938b070c2d1df8084e8093b11907c2382a59786d8956d50ff": "2026-07-20T20:04:06.465773+00:00",
+    "1d2af786d2eeb798eac03b2b3dd5379388c02ec4667960698ae6e4c2c2fda621": "2026-07-20T20:04:06.465773+00:00",
+    "c7bbaf11a84561c41179c3d15651648dab9dd1a39a269ba9c7f7d3bc77d54243": "2026-07-20T20:04:06.465773+00:00"
   },
   "recent_visuals": [
-    "price_chart",
-    "company_revenue_chart",
-    "drawdown_chart",
     "custom_stat_visual",
     "company_revenue_chart",
     "flowchart",
     "custom_stat_visual",
     "custom_stat_visual",
     "cot_positioning_chart",
+    "price_chart",
+    "fred_series_chart",
+    "custom_stat_visual",
     "price_chart"
   ]
 }

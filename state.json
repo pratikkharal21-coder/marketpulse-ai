@@ -184,10 +184,12 @@
     "476da218893f68281b6ba0a4d064e5d6a3399714a63032ee7e8b5ed70048e596": "2026-07-19T20:15:07.663625+00:00",
     "ef6a988775adb61ca727ab80d4598e76a8e0481b580e750e0ba526bfcc373b58": "2026-07-19T20:15:07.663625+00:00",
     "9dea1c438872bfe393986409053cae06a648853cf548fdb92fb00a7aad9712b1": "2026-07-19T20:15:07.663625+00:00",
-    "1fcca80208dd93214ecb832bf149d36a9f1fa45433f832f702828309d1eb43ee": "2026-07-19T20:15:07.663625+00:00"
+    "1fcca80208dd93214ecb832bf149d36a9f1fa45433f832f702828309d1eb43ee": "2026-07-19T20:15:07.663625+00:00",
+    "dc075e5b32ef18aa1dc8ee97be38bfef5f49791b067ad0696b3188057720d69e": "2026-07-20T13:09:28.380088+00:00",
+    "f7e667e0cf1f09f8d29d6f95208a413ecdca384516d74675b559be916c032847": "2026-07-20T13:09:28.380088+00:00",
+    "5f7dd37b5116dc7f926298f337534e6babe5e6db8acb55c18ee84673759f1a18": "2026-07-20T13:09:28.380088+00:00"
   },
   "recent_visuals": [
-    "company_revenue_chart",
     "seasonality_chart",
     "candlestick_chart",
     "fred_series_chart",
@@ -196,6 +198,7 @@
     "price_chart",
     "company_revenue_chart",
     "drawdown_chart",
-    "custom_stat_visual"
+    "custom_stat_visual",
+    "company_revenue_chart"
   ]
 }

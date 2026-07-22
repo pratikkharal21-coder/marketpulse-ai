@@ -183,16 +183,19 @@
     "8e570473457dbd2edf1effabe0768ff87c6961d40a66f52f40565917bc1e5643": "2026-07-21T13:08:29.396248+00:00",
     "223a09d05e049f07e9e5acd922016eedd8c8bc1f208a75037f83c002a995a375": "2026-07-21T17:04:50.561090+00:00",
     "e96dc7902ddcfa54644ddde960c09d020decefce795a0c66aa7228717e780a92": "2026-07-21T20:04:39.621196+00:00",
-    "7da21774a5f0687b3bbcec10a3298c5cd022b28d6e66798121494266ad7a3f09": "2026-07-21T23:19:18.887694+00:00"
+    "7da21774a5f0687b3bbcec10a3298c5cd022b28d6e66798121494266ad7a3f09": "2026-07-21T23:19:18.887694+00:00",
+    "8957288d70c68484c93ae4dad60652cd1e8b62b80ba842e43eaf6d2e59ee7c55": "2026-07-22T13:08:36.876600+00:00",
+    "4aa86bacae85715879739f311fefa370a728fc8ac54b895a62ed88ebc5ff49e2": "2026-07-22T13:08:36.876600+00:00",
+    "0cecf961b8edd463c797c6104f7703e08bd67a7691257b9bd7a233d3e8ccd724": "2026-07-22T13:08:36.876600+00:00"
   },
   "recent_visuals": [
-    "fred_series_chart",
     "custom_stat_visual",
     "price_chart",
     "custom_stat_visual",
     "area_chart",
     "price_chart",
     "company_revenue_chart",
+    "custom_stat_visual",
     "custom_stat_visual",
     "custom_stat_visual",
     "custom_stat_visual"

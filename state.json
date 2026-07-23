@@ -162,10 +162,10 @@
     "12051718f5896619177367588364851bce57bd04751a8ac437e16d162e0e7221": "2026-07-23T13:08:33.920871+00:00",
     "868ec3941828a95c5f8ff71ddc2fc7d6980f5e6d602baa741d5e60ddae20772a": "2026-07-23T13:08:33.920871+00:00",
     "0ec9a8188163da4facc244ad9e190da6e5c42b290a415f48cd30887f10246fda": "2026-07-23T13:08:33.920871+00:00",
-    "3df6cfc11fd60300fa7cc5132d5b8f99cf7131e4a01cc7f16c08483898340d87": "2026-07-23T15:14:39.377044+00:00"
+    "3df6cfc11fd60300fa7cc5132d5b8f99cf7131e4a01cc7f16c08483898340d87": "2026-07-23T15:14:39.377044+00:00",
+    "2ba17be388624cc19e0608979e5b75ad60b9c7f334b6a49b0b46af131c8ea05f": "2026-07-23T20:04:32.835671+00:00"
   },
   "recent_visuals": [
-    "price_chart",
     "company_revenue_chart",
     "custom_stat_visual",
     "custom_stat_visual",
@@ -174,6 +174,7 @@
     "custom_stat_visual",
     "custom_stat_visual",
     "custom_stat_visual",
-    "price_chart"
+    "price_chart",
+    "custom_stat_visual"
   ]
 }

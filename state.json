@@ -43,10 +43,10 @@
     "ec3694d91e43463b7125785687f25b4aa6d75b2f9e74b4dbfe299d4bee9ed338": "2026-08-01T13:06:25.112748+00:00",
     "e88078aed77809ce05b2cd506950341b9b12cd919139b5cf041a125ae5fe9f18": "2026-08-01T13:06:25.112748+00:00",
     "251c71c2ab1ada160ed95602167b02a16d9f90f83922608c9db87d68e7a078f4": "2026-08-01T13:06:25.112748+00:00",
-    "2ddad12cdb8660acbf4d331546466baf25d19ce2d42ca4cecb6010d42b3bf82d": "2026-08-01T13:06:25.112748+00:00"
+    "2ddad12cdb8660acbf4d331546466baf25d19ce2d42ca4cecb6010d42b3bf82d": "2026-08-01T13:06:25.112748+00:00",
+    "4bfe8039da5ec1e04fb43798fcf368d3f9c21da244a682d2805f9dea1b185b0a": "2026-08-01T17:03:02.296758+00:00"
   },
   "recent_visuals": [
-    "price_chart",
     "company_revenue_chart",
     "fred_series_chart",
     "price_chart",
@@ -55,6 +55,7 @@
     "bar_chart",
     "custom_stat_visual",
     "custom_stat_visual",
-    "custom_stat_visual"
+    "custom_stat_visual",
+    "flowchart"
   ]
 }

@@ -1,8 +1,5 @@
 {
-  "seen": {
-    "2b981f51f7eb0ef7e333f447f942ed0b8c2f37bc779f255372a7c104fd3b7bc6": "2026-08-16T13:33:23.962241+00:00",
-    "9347add64f9667688e14919beba22e51c1dc2dd22b0cf237d90751ccc2157153": "2026-08-16T13:33:23.962241+00:00"
-  },
+  "seen": {},
   "recent_visuals": [
     "fred_series_chart",
     "price_chart",

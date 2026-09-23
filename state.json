@@ -1,8 +1,9 @@
 {
-  "seen": {},
+  "seen": {
+    "43a747c9f5fb16a5b11598289d53e5005905b765ba6a1d6f53c3ce183917193a": "2026-09-23T00:39:17.896558+00:00",
+    "b4eff4c0a895922db3a21dcf8aaa7abda14a67557376c6f56c494942d695c335": "2026-09-23T00:39:17.896558+00:00"
+  },
   "recent_visuals": [
-    "fred_series_chart",
-    "price_chart",
     "area_chart",
     "candlestick_chart",
     "company_revenue_chart",
@@ -10,6 +11,8 @@
     "price_chart",
     "custom_stat_visual",
     "custom_stat_visual",
-    "bar_chart"
+    "bar_chart",
+    "flowchart",
+    "flowchart"
   ]
 }

@@ -6,6 +6,14 @@ import feedparser
 
 logger = logging.getLogger("marketpulse.feeds")
 
+# investing.com's forex/commodities feeds emit pubDate as "Sep 22, 2026 21:05 GMT" -- not
+# RFC 822 (no weekday, no seconds) -- which feedparser's date parser can't handle, so
+# published_parsed/updated_parsed come back None. Previously that made _entry_timestamp return
+# None, which the lookback_hours filter in fetch_recent_items treats as "always include"
+# (`if published and ...`), so every entry from these feeds bypassed freshness filtering
+# entirely -- 100% of the "fx" category, silently. This is the manual fallback for that format.
+_INVESTING_COM_DATE_FORMAT = "%b %d, %Y %H:%M %Z"
+
 FEEDS = {
     "markets": [
         "https://finance.yahoo.com/news/rssindex",
@@ -58,6 +66,18 @@ def _entry_timestamp(entry):
         value = entry.get(key)
         if value:
             return datetime.fromtimestamp(time.mktime(value), tz=timezone.utc)
+    # feedparser couldn't parse either field into a struct_time -- try the raw string against
+    # the one non-standard format we've actually seen in production (investing.com) before
+    # giving up. Anything else still falls through to None (treated as "always include" by the
+    # caller), same as before.
+    for key in ("published", "updated"):
+        raw = entry.get(key)
+        if not raw:
+            continue
+        try:
+            return datetime.strptime(raw, _INVESTING_COM_DATE_FORMAT).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
     return None
 
 

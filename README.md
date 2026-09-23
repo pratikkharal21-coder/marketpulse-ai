@@ -84,7 +84,7 @@ decisions worth knowing about before reviewing the code:
 ## Data flow per run
 
 1. **`feeds.py`** fetches every RSS feed in `FEEDS` (6 categories: markets, macro, fx,
-   commodities, crypto, tech_ai — 22 feeds total), filtered to the last `LOOKBACK_HOURS`.
+   commodities, crypto, tech_ai — 30 feeds total), filtered to the last `LOOKBACK_HOURS`.
 2. **`state.py`** drops anything already sent in a previous run (hash = story URL).
 3. **`triage.py`** scores every remaining headline 0-10 on relevance/impact via Groq, in batches
    of 12 (tuned to stay under the free-tier token-per-minute cap). Survivors above

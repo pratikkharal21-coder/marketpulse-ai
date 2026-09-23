@@ -1,10 +1,21 @@
 import logging
+import re
 import time
 from datetime import datetime, timezone
 
 import feedparser
 
 logger = logging.getLogger("marketpulse.feeds")
+
+# benzinga.com/feed was dropped from FEEDS below after every single entry it returned (10/10,
+# checked live) turned out to be templated SEO filler -- "<Token> Price Prediction: 2025, 2026,
+# 2030" for whatever crypto token, regenerated daily with a fresh pubDate despite being
+# evergreen, not-actually-new content. That's a distinct failure mode from the investing.com
+# date-parsing bug above: the timestamp is genuinely fresh, so LOOKBACK_HOURS filtering can't
+# catch it -- only the content itself gives it away. Kept as a title-pattern filter (not just a
+# removed feed) so the same template spam gets caught if another feed starts running it, or if
+# Benzinga's feed later mixes real news back in alongside the filler.
+_TEMPLATE_SPAM_TITLE_RE = re.compile(r"Price Prediction:?\s*20\d\d,\s*20\d\d", re.IGNORECASE)
 
 # investing.com's forex/commodities feeds emit pubDate as "Sep 22, 2026 21:05 GMT" -- not
 # RFC 822 (no weekday, no seconds) -- which feedparser's date parser can't handle, so
@@ -23,7 +34,6 @@ FEEDS = {
         "https://feeds.bbci.co.uk/news/business/rss.xml",
         "http://rss.cnn.com/rss/money_markets.rss",
         "https://seekingalpha.com/market_currents.xml",
-        "https://www.benzinga.com/feed",
         "https://feeds.feedburner.com/zerohedge/feed",
         "https://www.ft.com/rss/markets",
         "https://spotgamma.com/feed/",
@@ -110,6 +120,8 @@ def fetch_recent_items(lookback_hours):
                 link = entry.get("link", "")
                 title = entry.get("title", "").strip()
                 if not title or not link:
+                    continue
+                if _TEMPLATE_SPAM_TITLE_RE.search(title):
                     continue
 
                 items.append(

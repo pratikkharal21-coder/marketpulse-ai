@@ -33,8 +33,15 @@ GMAIL_ADDRESS = _require("GMAIL_ADDRESS")
 GMAIL_APP_PASSWORD = _require("GMAIL_APP_PASSWORD")
 RECIPIENT_EMAIL = _require("RECIPIENT_EMAIL")
 
-TRIAGE_MODEL = os.environ.get("TRIAGE_MODEL", "llama-3.1-8b-instant")
-GENERATE_MODEL = os.environ.get("GENERATE_MODEL", "llama-3.3-70b-versatile")
+# llama-3.1-8b-instant / llama-3.3-70b-versatile were retired from this Groq account (confirmed
+# via /openai/v1/models -- both now 404 model_not_found), which silently zeroed every triage
+# batch and produced only empty "no high-impact stories" emails for days. qwen/qwen3.8-27b is
+# the remaining sizable non-reasoning general chat model on the free tier (the other survivors --
+# openai/gpt-oss-* -- burn an unpredictable chunk of max_tokens on hidden reasoning before
+# writing JSON, which risks the same truncation-on-budget failure the Gemini fallback already
+# works around with thinking_budget=0; qwen3.8-27b showed no such overhead in testing).
+TRIAGE_MODEL = os.environ.get("TRIAGE_MODEL", "qwen/qwen3.8-27b")
+GENERATE_MODEL = os.environ.get("GENERATE_MODEL", "qwen/qwen3.8-27b")
 TRIAGE_RELEVANCE_THRESHOLD = int(os.environ.get("TRIAGE_RELEVANCE_THRESHOLD", "6"))
 MAX_STORIES_ANALYZED = int(os.environ.get("MAX_STORIES_ANALYZED", "10"))
 MAX_SHORT_THREADS = int(os.environ.get("MAX_SHORT_THREADS", "5"))

@@ -14,10 +14,10 @@ GitHub Actions schedule: trigger (3x/day, fixed UTC cron — see "Production sch
 GitHub Actions (ubuntu-latest, free tier)
         │
         ▼
-  feeds.py ──fetch──▶ state.py ──dedupe──▶ triage.py ──score (Groq Llama 3.1 8B)──▶
-        │                                                                          │
-        ▼                                                                          ▼
-  generate.py (5 short threads)  +  longform.py (2 deep dives)   ← both call Groq Llama 3.3 70B
+  feeds.py ──fetch──▶ state.py ──dedupe──▶ triage.py ──score (Groq qwen/qwen3.8-27b)──▶
+        │                                                                              │
+        ▼                                                                              ▼
+  generate.py (5 short threads)  +  longform.py (2 deep dives)   ← both call Groq qwen/qwen3.8-27b
         │                                  │
         ▼                                  ▼
    chart.py (price/bar/histogram/pie/trend/flowchart, via yfinance + matplotlib)
@@ -70,8 +70,8 @@ decisions worth knowing about before reviewing the code:
 | `config.py` | Loads `.env` / environment variables; all tunable knobs live here. |
 | `feeds.py` | `FEEDS` dict (category → RSS URLs) + fetch/parse logic. Failures are per-feed and non-fatal. |
 | `state.py` | Load/save/prune `state.json`; dedupes stories already sent. |
-| `triage.py` | Batches headlines to Groq (Llama 3.1 8B) for relevance/impact scoring; drops low-value stories. |
-| `generate.py` | Per-story call to Groq (Llama 3.3 70B) producing one short thread (3-5 tweets). |
+| `triage.py` | Batches headlines to Groq (qwen/qwen3.8-27b) for relevance/impact scoring; drops low-value stories. |
+| `generate.py` | Per-story call to Groq (qwen/qwen3.8-27b) producing one short thread (3-5 tweets). |
 | `longform.py` | Same model, deeper prompt: one 8-10 tweet "deep dive" thread per top story (historical context, scenarios, risk). |
 | `persona.py` | Shared prompt fragments: tone/neutrality rules, X-engagement craft rules, "no bare recaps" rule, and the visual-selection guidelines + ticker cheat sheet. Both `generate.py` and `longform.py` compose their system prompts from these. |
 | `chart.py` | Renders all 6 visual types to PNG bytes; `resolve_visual()` dispatches on the model's `visual_type` field. |
@@ -88,7 +88,7 @@ decisions worth knowing about before reviewing the code:
 3. **`triage.py`** scores every remaining headline 0-10 on relevance/impact via Groq, in batches
    of 12 (tuned to stay under the free-tier token-per-minute cap). Survivors above
    `TRIAGE_RELEVANCE_THRESHOLD` are kept, sorted, capped at `MAX_STORIES_ANALYZED`.
-4. **`generate.py`** takes the top `MAX_SHORT_THREADS` survivors and asks Groq (Llama 3.3 70B)
+4. **`generate.py`** takes the top `MAX_SHORT_THREADS` survivors and asks Groq (qwen/qwen3.8-27b)
    for one short thread each, plus an optional visual spec.
 5. **`longform.py`** takes the top `MAX_LONGFORM_STORIES` (overlaps with step 4 by design — the
    single most important story often deserves both a quick take and a deep dive) and asks for a
@@ -136,6 +136,14 @@ a second line of defense.
 - **No automated tests around the email-state race condition fix** — the retry-with-rebase loop
   in the workflow was added reactively after observing the failure; it hasn't been deliberately
   load-tested with genuinely concurrent triggers.
+- **A silent model-retirement produced days of empty digests.** Groq retired `llama-3.1-8b-instant`
+  and `llama-3.3-70b-versatile` from this account (they now 404 as `model_not_found`); since
+  `triage._triage_batch` catches per-batch exceptions and just skips the batch instead of failing
+  the run, every triage call quietly failed, 0 stories ever survived, and the workflow "succeeded"
+  while only ever sending the empty-digest notice — for several days before anyone noticed. Fixed
+  by moving to `qwen/qwen3.8-27b` (see `config.py`), but the underlying gap remains: nothing pages
+  on triage's survivor count going to 0 for multiple consecutive runs, which is exactly what a
+  silent upstream deprecation looks like.
 
 ## Local development
 

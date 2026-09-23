@@ -62,6 +62,33 @@ REGEN_THRESHOLD = int(os.environ.get("REGEN_THRESHOLD", "6"))
 CONTENT_ENGINE_ENABLED = _flag("CONTENT_ENGINE_ENABLED", True)
 ENGAGEMENT_SCORING_ENABLED = _flag("ENGAGEMENT_SCORING_ENABLED", True)
 
+# Optional: auto-post the top-ranked thread(s) to X instead of only emailing drafts. Needs an
+# X Developer account's OAuth 1.0a credentials (developer.x.com -> your app -> "Keys and
+# tokens"). Auto-enables once all four are present; X_AUTO_POST_ENABLED=false forces it off
+# even with keys configured. Left unset (the default), nothing changes -- posting is opt-in.
+X_API_KEY = os.environ.get("X_API_KEY")
+X_API_SECRET = os.environ.get("X_API_SECRET")
+X_ACCESS_TOKEN = os.environ.get("X_ACCESS_TOKEN")
+X_ACCESS_TOKEN_SECRET = os.environ.get("X_ACCESS_TOKEN_SECRET")
+X_AUTO_POST_ENABLED = _flag("X_AUTO_POST_ENABLED", True) and all(
+    (X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET)
+)
+# X's free API tier caps writes at 500 posts/month account-wide, and EVERY tweet in a thread is
+# a separate post -- a single 10-tweet deep dive is 10 posts, not 1. Default cap sits below 500
+# as a safety margin (clock skew between our monthly bucket and X's own billing-cycle reset,
+# plus this pipeline running 3x/day means overshooting by even one run's worth of threads is
+# easy to do right at the boundary). Raise it if your actual X plan allows more.
+X_MONTHLY_POST_CAP = int(os.environ.get("X_MONTHLY_POST_CAP", "480"))
+# How many of this run's (already engagement-ranked) threads to actually post to X. Everything
+# generated still gets emailed regardless -- this only throttles the auto-posted subset, so the
+# free tier's monthly cap survives 3 runs/day without exhausting itself in one run. At the
+# default of 1 thread/run (avg ~4 tweets) x 3 runs/day, that's ~360 posts/month even before the
+# cap kicks in -- comfortable headroom for occasional longer deep-dive posts.
+X_MAX_THREADS_PER_RUN = int(os.environ.get("X_MAX_THREADS_PER_RUN", "1"))
+# Delay between consecutive tweets in a posted thread, so replies land in order and the account
+# doesn't look automated/bursty to X's own abuse heuristics.
+X_POST_DELAY_SECONDS = int(os.environ.get("X_POST_DELAY_SECONDS", "20"))
+
 BASE_DIR = Path(__file__).parent
 STATE_PATH = BASE_DIR / "state.json"
 LOG_PATH = BASE_DIR / "marketpulse.log"

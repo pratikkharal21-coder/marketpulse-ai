@@ -73,3 +73,20 @@ def save_recent_visuals(state, used_visuals):
     replaces (not extends) the stored list to avoid double-counting on the next run."""
     state["recent_visuals"] = [v for v in used_visuals if v and v != "none"][-RECENT_VISUALS_WINDOW:]
     return state
+
+
+def get_x_post_budget(state):
+    """Tracks posts made to X this calendar month against config.X_MONTHLY_POST_CAP. Keyed by
+    UTC year-month so it resets naturally at the start of each month instead of needing its own
+    pruning logic."""
+    month_key = datetime.now(timezone.utc).strftime("%Y-%m")
+    budget = state.get("x_post_budget") or {}
+    if budget.get("month") != month_key:
+        return {"month": month_key, "posted": 0}
+    return budget
+
+
+def record_x_posts(state, budget, count):
+    budget["posted"] = budget.get("posted", 0) + count
+    state["x_post_budget"] = budget
+    return state

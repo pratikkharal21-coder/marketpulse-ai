@@ -78,6 +78,7 @@ decisions worth knowing about before reviewing the code:
 | `ai_client.py` | Thin wrapper around the Groq SDK: forces JSON-object responses, parses them. |
 | `report.py` | Jinja2 HTML template; assigns each chart a Content-ID for inline embedding. |
 | `mailer.py` | Gmail SMTP send, `multipart/related` with inline images. |
+| `poster.py` | Optional: posts the run's top-ranked thread(s) to X as a real reply chain via `tweepy`, respecting a monthly post budget. A no-op unless X credentials are configured -- see "Auto-posting to X" below. |
 | `.github/workflows/marketpulse.yml` | The only thing GitHub's scheduler runs. `workflow_dispatch`-only (see above). |
 
 ## Data flow per run
@@ -94,9 +95,11 @@ decisions worth knowing about before reviewing the code:
    single most important story often deserves both a quick take and a deep dive) and asks for a
    longer, more analytical thread.
 6. **`chart.py`** renders whichever visual each story's JSON response specified (or none).
-7. **`report.py`** renders the HTML email and collects inline images by Content-ID.
-8. **`mailer.py`** sends it via Gmail SMTP.
-9. **`state.py`** marks everything sent; the workflow commits `state.json` back to the repo.
+7. **`poster.py`** (optional, off by default) posts the top `X_MAX_THREADS_PER_RUN` thread(s)
+   across both groups to X for real, as a genuine reply chain, before the email goes out.
+9. **`report.py`** renders the HTML email and collects inline images by Content-ID.
+10. **`mailer.py`** sends it via Gmail SMTP.
+11. **`state.py`** marks everything sent; the workflow commits `state.json` back to the repo.
 
 ## The six visual types (`chart.py`)
 
@@ -112,6 +115,43 @@ decisions worth knowing about before reviewing the code:
 All chart titles wrap to 2 lines with ellipsis truncation (a real bug we hit: long headlines
 used as chart titles were getting clipped off the canvas) and saves use `bbox_inches="tight"` as
 a second line of defense.
+
+## Auto-posting to X
+
+By default MarketPulse only emails ready-to-post thread drafts -- nothing gets posted anywhere
+on its own, and growing an X account off it means manually copying threads over yourself.
+`poster.py` adds real auto-posting as an opt-in on top of that; email still always sends
+regardless.
+
+**Setup:** create an X Developer app at developer.x.com with **Read and Write** permissions,
+generate/regenerate the access token *after* setting that permission (an access token generated
+before is stuck read-only), and set four secrets -- locally in `.env`, in the cloud as GitHub
+Actions repo secrets (`X_API_KEY`, `X_API_SECRET`, `X_ACCESS_TOKEN`, `X_ACCESS_TOKEN_SECRET`).
+Posting turns on automatically once all four are present; `X_AUTO_POST_ENABLED=false` forces it
+back off without removing the keys.
+
+**Budget, not best-effort:** X's free API tier caps writes at 500 posts/month account-wide, and
+every tweet in a thread is its own post -- a 10-tweet deep dive is 10 posts, not 1. `state.py`
+tracks posts made this UTC calendar month (`x_post_budget` in `state.json`, resets automatically
+each month) against `X_MONTHLY_POST_CAP` (default 480, a safety margin below the real 500 cap).
+Each run posts up to `X_MAX_THREADS_PER_RUN` threads (default 1), chosen from that run's threads
++ deep dives ranked together by the same engagement composite used for email ordering, skipping
+any candidate whose tweet count wouldn't fit the remaining budget rather than posting it
+partially. At the defaults (1 thread/run, ~4 tweets average, 3 runs/day) that's roughly
+360 posts/month even before the cap engages -- headroom for the occasional longer deep dive.
+
+**What actually posts:** the chosen thread's tweets go out as a real reply chain (each replies
+to the previous one, in the same "N/TOTAL" order the model already writes them in), with the
+story's chart image, if any, attached to the first tweet via the v1.1 media upload endpoint. A
+failed upload just drops the image rather than blocking the tweet. `seed_replies` (the
+follow-up reply suggestions in each item) are NOT auto-posted -- persona.py wrote those framed
+as "replies the user could post," so they stay a manual, editorial choice rather than going out
+unreviewed.
+
+**Failure mode:** if posting fails partway through a thread (rate limit, transient API error),
+`poster.py` stops rather than retrying from tweet 1 -- a partial thread on X is fixable by hand;
+a duplicated opening tweet from a naive retry isn't. The run still emails everything normally
+either way; a posting failure never blocks or delays the email.
 
 ## Known rough edges (good places to look for improvement)
 

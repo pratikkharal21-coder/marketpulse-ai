@@ -9,6 +9,7 @@ import feeds
 import generate
 import longform
 import mailer
+import poster
 import report
 import state
 import triage
@@ -147,6 +148,28 @@ def run():
     if config.ENGAGEMENT_SCORING_ENABLED:
         threads = verify.rank_by_engagement(threads)
         deep_dives = verify.rank_by_engagement(deep_dives)
+
+    # Auto-posting is a separate concern from the email's own section layout (short threads
+    # then deep dives) -- it ranks across BOTH groups combined so a highly-ranked deep dive can
+    # win the run's posting slot(s) over a lower-ranked short thread. Everything still gets
+    # emailed either way; this only decides what also goes out as a real X thread.
+    if config.X_AUTO_POST_ENABLED:
+        budget = state.get_x_post_budget(st)
+        remaining = config.X_MONTHLY_POST_CAP - budget["posted"]
+        if remaining <= 0:
+            logger.info(
+                "X auto-post: monthly budget (%d) already used up, skipping posting this run "
+                "(still emailing everything as normal).", config.X_MONTHLY_POST_CAP,
+            )
+        else:
+            postable = verify.rank_by_engagement(threads + deep_dives) if threads or deep_dives else []
+            posted_count, tweets_used = poster.post_top_threads(postable, remaining)
+            if tweets_used:
+                st = state.record_x_posts(st, budget, tweets_used)
+            logger.info(
+                "X auto-post: %d thread(s) posted this run (%d tweet(s); %d/%d monthly budget "
+                "used).", posted_count, tweets_used, budget.get("posted", 0), config.X_MONTHLY_POST_CAP,
+            )
 
     report_html, inline_images = report.render(threads, len(survivors), deep_dives)
     subject = f"MarketPulse AI — {len(threads)} threads"

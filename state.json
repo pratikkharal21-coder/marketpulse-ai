@@ -28,11 +28,11 @@
     "41b7fb83e8164ea4c1188b88f26623a40314a1cfacbc122ce14d62abb62668e7": "2026-09-25T17:10:41.006563+00:00",
     "2c38e3652bcf1f627a8457ebe342cbe4a563903ee489b31c3b40c6069d29c4a9": "2026-09-25T17:10:41.006563+00:00",
     "3ea2efc31aecbe4909fce5610cb9f04a11edf168114a29115bc607d9057d7064": "2026-09-25T17:10:41.006563+00:00",
-    "f3b93b5f1ae9f2d2f28a9405ccac9a85bf67c7f77aeb7c21ca1ffcb2bf729bf1": "2026-09-25T17:10:41.006563+00:00"
+    "f3b93b5f1ae9f2d2f28a9405ccac9a85bf67c7f77aeb7c21ca1ffcb2bf729bf1": "2026-09-25T17:10:41.006563+00:00",
+    "90e42936d6fb9b9ebb233de7168591fe90f65a120774f4b7c34e8881bc688971": "2026-09-25T17:55:24.595925+00:00",
+    "da61a2b75f56e0c494c87d063205b400c264332690af97936f72f555ebdf42d5": "2026-09-25T17:55:24.595925+00:00"
   },
   "recent_visuals": [
-    "flowchart",
-    "flowchart",
     "price_chart",
     "bar_chart",
     "custom_stat_visual",
@@ -40,6 +40,8 @@
     "fred_series_chart",
     "flowchart",
     "price_chart",
-    "fred_series_chart"
+    "fred_series_chart",
+    "area_chart",
+    "candlestick_chart"
   ]
 }

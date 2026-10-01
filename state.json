@@ -76,10 +76,13 @@
     "fc10e743ad5866788ecff14cd8bebe08f99a9a26c654fbfae9abf88cdf30900f": "2026-09-30T18:27:13.206714+00:00",
     "b12323df4c78a788225e77a7c6d5239d0f1f8abd5a4410ddb99b8028c1a9d49a": "2026-09-30T18:27:13.206714+00:00",
     "0a59c4afff811375f7b203b82573f8626cdf15c4eb3d495e86f8b1fc1e01ea92": "2026-09-30T23:37:29.427025+00:00",
-    "227f425f133caa4326f76665824c26ac9ef4d8eaeea2adbdd1f88cce87b8d5ad": "2026-09-30T23:37:29.427025+00:00"
+    "227f425f133caa4326f76665824c26ac9ef4d8eaeea2adbdd1f88cce87b8d5ad": "2026-09-30T23:37:29.427025+00:00",
+    "e2aed5399ffc439562d4e9a96aade9f618068c16a9fec77598a589a3bdcebdb8": "2026-10-01T13:12:34.275673+00:00",
+    "4566f3124d31cf4102e87bb38899a036127012b23f23bf4fb45b1574cfc1b438": "2026-10-01T13:12:34.275673+00:00",
+    "c18df35fb2aa009cd5048c6fd5cf33014757454e8e63149c37aaa58d470b5b22": "2026-10-01T13:12:34.275673+00:00",
+    "6b4f137053aad23a7f66af013b24b8a01690236dfcd9f0335bb66a18900cad69": "2026-10-01T13:12:34.275673+00:00"
   },
   "recent_visuals": [
-    "custom_stat_visual",
     "line_chart",
     "custom_stat_visual",
     "fred_series_chart",
@@ -88,6 +91,7 @@
     "flowchart",
     "candlestick_chart",
     "candlestick_chart",
-    "dumbbell_chart"
+    "dumbbell_chart",
+    "price_chart"
   ]
 }

@@ -24,7 +24,14 @@ GROQ_API_KEY = _require("GROQ_API_KEY")
 # Optional: when set, ai_client falls back to Gemini for a generation call that hits Groq's
 # daily token quota, instead of giving up for the rest of the run. Free at aistudio.google.com.
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-flash-lite-latest")
+# Was "gemini-flash-lite-latest" -- found (2026-10-06) to 400 on every single call with
+# thinkingConfig.thinkingBudget=0 (confirmed directly against the API: the model name itself is
+# still valid, but that specific model generation now rejects a budget of exactly 0). Since
+# ai_client.py always sends thinkingBudget=0 (needed to stop Gemini's reasoning from eating the
+# output-token budget -- see _call_gemini_once), that made the Groq-quota-exhaustion fallback
+# silently fail 100% of the time, right when it's needed most. "gemini-flash-latest" (not
+# -lite-) accepts the same request fine -- verified directly against the API before switching.
+GEMINI_FALLBACK_MODEL = os.environ.get("GEMINI_FALLBACK_MODEL", "gemini-flash-latest")
 # Optional: free API key from fredaccount.stlouisfed.org, powers fred_series_chart (real macro
 # data -- CPI, unemployment, Fed funds rate, ...). Without it, that visual type is unavailable
 # and the model isn't offered it (see generate.py/longform.py's SYSTEM_PROMPT construction).

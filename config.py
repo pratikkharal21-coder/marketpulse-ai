@@ -68,6 +68,10 @@ REGEN_THRESHOLD = int(os.environ.get("REGEN_THRESHOLD", "6"))
 # All default on; set e.g. CONTENT_ENGINE_ENABLED=false in .env to turn one off.
 CONTENT_ENGINE_ENABLED = _flag("CONTENT_ENGINE_ENABLED", True)
 ENGAGEMENT_SCORING_ENABLED = _flag("ENGAGEMENT_SCORING_ENABLED", True)
+# One extra sarcastic/mocking "meme take" thread per run, reacting to the day's top-ranked
+# story, with an original (not scraped/copied) cartoon illustration from memeart.py. Additive to
+# the normal threads/deep dives, never a replacement -- costs one extra, cheap Groq call per run.
+MEME_MODE_ENABLED = _flag("MEME_MODE_ENABLED", True)
 
 # Optional: auto-post the top-ranked thread(s) to X instead of only emailing drafts. Needs an
 # X Developer account's OAuth 1.0a credentials (developer.x.com -> your app -> "Keys and

@@ -59,6 +59,28 @@ TEMPLATE = """
   <h3 style="margin-top: 24px; margin-bottom: 8px;">Deep Dive Thread{{ 's' if deep_dives|length != 1 else '' }}</h3>
   {% for deep_dive in deep_dives %}{{ thread_card(deep_dive, '#b45309') }}{% endfor %}
   {% endif %}
+
+  {% if meme_threads %}
+  <h3 style="margin-top: 24px; margin-bottom: 8px;">😂 Meme Take</h3>
+  {% for meme in meme_threads %}
+  <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+    <div style="font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">
+      {{ meme.story_source }} · {{ meme.thread|length }} tweets
+    </div>
+    {% if meme.cid %}
+    <img src="cid:{{ meme.cid }}" alt="meme" style="width: 100%; max-width: 560px; border-radius: 6px; margin: 10px 0;">
+    {% endif %}
+    {% for tweet in meme.thread %}
+    <p style="font-size: 15px; line-height: 1.4; margin: 10px 0; padding-left: 10px; border-left: 3px solid #db2777;">
+      {{ tweet }}
+    </p>
+    {% endfor %}
+    <div style="font-size: 12px; margin-top: 6px;">
+      <a href="{{ meme.story_link }}" style="color: #2563eb;">{{ meme.story_title }}</a>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
 </body>
 </html>
 """
@@ -80,15 +102,18 @@ def _assign_cids(items, prefix):
     return inline_images
 
 
-def render(threads, story_count, deep_dives):
+def render(threads, story_count, deep_dives, meme_threads=None):
+    meme_threads = meme_threads or []
     inline_images = {}
     inline_images.update(_assign_cids(threads, "thread"))
     inline_images.update(_assign_cids(deep_dives, "deepdive"))
+    inline_images.update(_assign_cids(meme_threads, "meme"))
 
     html = _template.render(
         run_time=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         story_count=story_count,
         threads=threads,
         deep_dives=deep_dives,
+        meme_threads=meme_threads,
     )
     return html, inline_images

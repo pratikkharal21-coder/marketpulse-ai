@@ -9,6 +9,7 @@ import feeds
 import generate
 import longform
 import mailer
+import meme
 import poster
 import report
 import state
@@ -149,10 +150,14 @@ def run():
         threads = verify.rank_by_engagement(threads)
         deep_dives = verify.rank_by_engagement(deep_dives)
 
-    # Auto-posting is a separate concern from the email's own section layout (short threads
-    # then deep dives) -- it ranks across BOTH groups combined so a highly-ranked deep dive can
-    # win the run's posting slot(s) over a lower-ranked short thread. Everything still gets
-    # emailed either way; this only decides what also goes out as a real X thread.
+    # Both auto-posting and the meme take below rank threads+deep_dives combined, independent
+    # of the email's own section layout (short threads then deep dives) -- a highly-ranked deep
+    # dive can win the day's "top story" treatment over a lower-ranked short thread. Computed
+    # once here so both consumers agree on what "the top story this run" means.
+    all_ranked = verify.rank_by_engagement(threads + deep_dives) if (threads or deep_dives) else []
+
+    # Auto-posting to X. Everything still gets emailed either way; this only decides what also
+    # goes out as a real X thread.
     if config.X_AUTO_POST_ENABLED:
         budget = state.get_x_post_budget(st)
         remaining = config.X_MONTHLY_POST_CAP - budget["posted"]
@@ -162,8 +167,7 @@ def run():
                 "(still emailing everything as normal).", config.X_MONTHLY_POST_CAP,
             )
         else:
-            postable = verify.rank_by_engagement(threads + deep_dives) if threads or deep_dives else []
-            posted_count, tweets_used = poster.post_top_threads(postable, remaining)
+            posted_count, tweets_used = poster.post_top_threads(all_ranked, remaining)
             if tweets_used:
                 st = state.record_x_posts(st, budget, tweets_used)
             logger.info(
@@ -171,10 +175,28 @@ def run():
                 "used).", posted_count, tweets_used, budget.get("posted", 0), config.X_MONTHLY_POST_CAP,
             )
 
-    report_html, inline_images = report.render(threads, len(survivors), deep_dives)
+    # Meme take: one extra, sarcastic/mocking thread reacting to the run's single top-ranked
+    # story (by the same engagement composite) -- additive to the serious threads/deep dives
+    # above, never a replacement for them. Reuses whichever story already won the top spot
+    # rather than spending a fresh triage pick, so it's always grounded against a story that
+    # already cleared every other quality gate in this run.
+    meme_threads = []
+    if config.MEME_MODE_ENABLED and all_ranked:
+        top_story = next((s for s in survivors if s["link"] == all_ranked[0]["story_link"]), None)
+        if top_story:
+            meme_item, reason = meme.generate_meme_thread(top_story, slot_framing)
+            if meme_item:
+                meme_threads.append(meme_item)
+                logger.info("Meme take: generated for '%s' (mood: %s)", top_story["title"], meme_item["mood"])
+            else:
+                logger.info("Meme take: skipped this run (%s)", reason)
+
+    report_html, inline_images = report.render(threads, len(survivors), deep_dives, meme_threads)
     subject = f"MarketPulse AI — {len(threads)} threads"
     if deep_dives:
         subject += f" + {len(deep_dives)} deep dive{'s' if len(deep_dives) != 1 else ''}"
+    if meme_threads:
+        subject += " + a meme take"
     mailer.send(f"{subject} ({_now_str()})", report_html, inline_images)
 
     # Only stories that actually made it into this email are marked "seen" -- a story that was

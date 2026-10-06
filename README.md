@@ -79,6 +79,8 @@ decisions worth knowing about before reviewing the code:
 | `report.py` | Jinja2 HTML template; assigns each chart a Content-ID for inline embedding. |
 | `mailer.py` | Gmail SMTP send, `multipart/related` with inline images. |
 | `poster.py` | Optional: posts the run's top-ranked thread(s) to X as a real reply chain via `tweepy`, respecting a monthly post budget. A no-op unless X credentials are configured -- see "Auto-posting to X" below. |
+| `meme.py` | Optional (on by default): generates one extra sarcastic/mocking "meme take" thread per run, reacting to the day's top-ranked story. |
+| `memeart.py` | Renders the meme take's cartoon illustration -- original, hand-drawn-in-code icons (not scraped/copied meme templates), same free/keyless/self-hosted approach as `chart.py`. |
 | `.github/workflows/marketpulse.yml` | The only thing GitHub's scheduler runs. `workflow_dispatch`-only (see above). |
 
 ## Data flow per run
@@ -97,6 +99,8 @@ decisions worth knowing about before reviewing the code:
 6. **`chart.py`** renders whichever visual each story's JSON response specified (or none).
 7. **`poster.py`** (optional, off by default) posts the top `X_MAX_THREADS_PER_RUN` thread(s)
    across both groups to X for real, as a genuine reply chain, before the email goes out.
+8. **`meme.py`** (optional, on by default) generates one extra mocking thread reacting to the
+   run's top-ranked story, with a cartoon illustration from `memeart.py`.
 9. **`report.py`** renders the HTML email and collects inline images by Content-ID.
 10. **`mailer.py`** sends it via Gmail SMTP.
 11. **`state.py`** marks everything sent; the workflow commits `state.json` back to the repo.
@@ -152,6 +156,30 @@ unreviewed.
 `poster.py` stops rather than retrying from tweet 1 -- a partial thread on X is fixable by hand;
 a duplicated opening tweet from a naive retry isn't. The run still emails everything normally
 either way; a posting failure never blocks or delays the email.
+
+## Meme take
+
+One extra thread per run (on by default, `MEME_MODE_ENABLED=false` to turn off): a sarcastic,
+mocking reaction to whichever story won the run's top engagement-ranked spot -- the FinTwit/WSB
+"comic relief" counterpart to the neutral-analyst threads everywhere else in the digest. It's
+additive, never a replacement -- the serious threads/deep dives are unaffected either way.
+
+**Tone:** `meme.py` deliberately does NOT build its system prompt from `persona.py`'s neutral,
+professional voice -- that's the one thing intentionally different. It still reuses the same
+hard anti-fabrication blocks as every other thread (`verify.check_causal_claims`,
+`check_thread_completeness`, `check_hashtag_discipline`): the joke can exaggerate a reaction
+("my portfolio", "my therapist"), but every market FACT it references still has to trace back
+to the real story, same as everywhere else in this pipeline. No hashtags, no mocking named
+individuals -- only the market/situation/collective trader psychology.
+
+**Visual:** `memeart.py` draws a small, fixed set of original cartoon icons (crying, panic,
+rocket, diamond hands, confused, facepalm, cool) with matplotlib primitives -- circles, polygons,
+simple shapes, in the same flat-color palette `chart.py` already uses. These are NOT scraped or
+copied meme templates (no Wojak, Pepe, "this is fine" dog, or similar) -- this project's existing
+rule against scraping/reusing someone else's protected image (see the TradingView note above)
+applies here too, so every illustration is drawn from scratch, free and keyless, same as every
+chart. The model picks which mood fits the story's tone and writes a short caption; an
+unrecognized mood falls back to "confused" rather than posting with no image at all.
 
 ## Known rough edges (good places to look for improvement)
 

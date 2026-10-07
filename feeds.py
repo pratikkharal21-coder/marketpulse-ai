@@ -68,6 +68,19 @@ FEEDS = {
         "https://techcrunch.com/category/artificial-intelligence/feed/",
         "https://www.theverge.com/rss/index.xml",
     ],
+    # Satire/comedy sources for the separate "lighter side" digest section (see satire.py) --
+    # deliberately NOT scored by triage.py's financial-relevance model (these are fictional
+    # headlines; scoring them for real market impact is meaningless) and never mixed into the
+    # serious threads/deep dives. r/wallstreetbets' .rss was tried and dropped: Reddit's RSS
+    # endpoint returned an empty 200 response for every request in testing (anti-bot blocking,
+    # not a parsing issue), same "returns nothing usable" failure mode feeds.py already handles
+    # per-feed for any other dead source. Clickhole's general feed was also tried and dropped --
+    # not finance-themed enough to be worth a triage-free slot; its category-specific "money"
+    # feed looked promising but returned 0 items live.
+    "humor": [
+        "https://www.theonion.com/rss",
+        "https://www.thedailymash.co.uk/business/feed",
+    ],
 }
 
 

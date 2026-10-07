@@ -12,6 +12,7 @@ import mailer
 import meme
 import poster
 import report
+import satire
 import state
 import triage
 import verify
@@ -87,11 +88,20 @@ def run():
     raw_items = feeds.fetch_recent_items(config.LOOKBACK_HOURS)
     new_items = state.filter_unseen(st, raw_items)
 
-    survivors = triage.triage(new_items)
-    if not survivors:
+    # The "humor" category (satire/comedy sources) never goes through triage.triage() --
+    # that model scores real financial relevance/impact, which is meaningless against a
+    # fictional Onion/Daily Mash headline. It gets its own digest further below instead.
+    humor_items = [i for i in new_items if i["source"] == "humor"]
+    serious_items = [i for i in new_items if i["source"] != "humor"]
+    satire_candidates = sorted(humor_items, key=lambda i: i.get("published") or "", reverse=True)
+    has_satire_candidates = config.SATIRE_DIGEST_ENABLED and bool(satire_candidates)
+
+    survivors = triage.triage(serious_items)
+    if not survivors and not has_satire_candidates:
         logger.info(
-            "No stories survived triage (%d raw items, %d unseen). Sending empty-digest notice "
-            "and exiting -- this is expected on a genuinely quiet news window, not necessarily a bug.",
+            "No stories survived triage (%d raw items, %d unseen) and no satire candidates "
+            "either. Sending empty-digest notice and exiting -- this is expected on a genuinely "
+            "quiet news window, not necessarily a bug.",
             len(raw_items), len(new_items),
         )
         report_html, inline_images = report.render([], 0, [])
@@ -191,12 +201,22 @@ def run():
             else:
                 logger.info("Meme take: skipped this run (%s)", reason)
 
-    report_html, inline_images = report.render(threads, len(survivors), deep_dives, meme_threads)
+    # Satire digest: a small, separate "lighter side" section built from FEEDS["humor"] --
+    # additive to everything above, never a replacement, and never scored/ranked alongside the
+    # serious threads (see has_satire_candidates above for why it skips triage entirely).
+    satire_items = []
+    satire_published_links = set()
+    if has_satire_candidates:
+        satire_items, satire_published_links = satire.generate_satire_digest(satire_candidates, slot_framing)
+
+    report_html, inline_images = report.render(threads, len(survivors), deep_dives, meme_threads, satire_items)
     subject = f"MarketPulse AI — {len(threads)} threads"
     if deep_dives:
         subject += f" + {len(deep_dives)} deep dive{'s' if len(deep_dives) != 1 else ''}"
     if meme_threads:
         subject += " + a meme take"
+    if satire_items:
+        subject += f" + {len(satire_items)} satire bit{'s' if len(satire_items) != 1 else ''}"
     mailer.send(f"{subject} ({_now_str()})", report_html, inline_images)
 
     # Only stories that actually made it into this email are marked "seen" -- a story that was
@@ -204,14 +224,16 @@ def run():
     # generation / got blocked by a verification check stays eligible for a future run, instead
     # of being permanently discarded for a transient or borderline failure.
     published_stories = [s for s in survivors if s["link"] in published_links]
-    st = state.mark_sent(st, published_stories)
+    satire_published_stories = [s for s in humor_items if s["link"] in satire_published_links]
+    st = state.mark_sent(st, published_stories + satire_published_stories)
     st = state.save_recent_visuals(st, used_visuals)
     state.save(st)
 
     logger.info(
-        "=== MarketPulse run complete: %d thread(s) + %d deep dive(s) sent ===",
+        "=== MarketPulse run complete: %d thread(s) + %d deep dive(s) + %d satire bit(s) sent ===",
         len(threads),
         len(deep_dives),
+        len(satire_items),
     )
 
 

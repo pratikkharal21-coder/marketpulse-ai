@@ -1476,6 +1476,34 @@ def fetch_wikipedia_image(query, label=None, stats_out=None):
     return _caption_image(image_bytes, title)
 
 
+def generate_editorial_illustration(spec, label=None, stats_out=None):
+    """Illustrated visual for a qualitative/dramatic story that doesn't fit a precise numeric
+    chart -- a free Pollinations.ai background scene with a bold poster-style caption and an
+    optional stat callout drawn on top (see news_image.py/illustration.py). A local import
+    avoids a circular import: illustration.py imports GREEN/RED/WATERMARK_HANDLE from this
+    module, so news_image.py can't be imported at chart.py's module level."""
+    import news_image
+
+    if not spec or not isinstance(spec, dict):
+        return None
+
+    title = spec.get("title")
+    scene = spec.get("scene")
+    if not title or not scene:
+        return None
+
+    stat_value = spec.get("stat_value")
+    stat_text = None
+    if stat_value is not None:
+        try:
+            unit = spec.get("stat_unit") or ""
+            stat_text = f"{float(stat_value):+g}{unit}"
+        except (TypeError, ValueError):
+            stat_text = None
+
+    return news_image.generate_news_illustration(scene, title, stat_text, headline=label, stats_out=stats_out)
+
+
 def generate_price_chart(ticker, label=None, stats_out=None):
     if not ticker:
         return None
@@ -2697,6 +2725,8 @@ def resolve_visual(result, label=None, stats_out=None, source=None):
         return generate_pnf_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "real_world_image":
         return fetch_wikipedia_image(result.get("image_query"), label=label, stats_out=stats_out)
+    if visual_type == "editorial_illustration":
+        return generate_editorial_illustration(result.get("editorial_illustration"), label=label, stats_out=stats_out)
     if visual_type == "ohlc_chart":
         return generate_ohlc_chart(result.get("ticker"), label=label, stats_out=stats_out)
     if visual_type == "heikin_ashi_chart":

@@ -88,6 +88,7 @@ Respond with ONLY a JSON object of this shape, no prose, no markdown fences:
 "custom_stat_visual": {"title": "...", "stats": [{"label": "...", "value": 0, "unit": "..."}, ...]} or null, \
 "flowchart": {"steps": [...]} or null, \
 "image_query": "..." or null, \
+"editorial_illustration": {"title": "...", "stat_value": 0 or null, "stat_unit": "..." or null, "scene": "..."} or null, \
 "seed_replies": ["...", "..."], "quote_angle": "...", \
 "relevance": 0-10, "expected_engagement": 0-10, "market_significance": 0-10, "confidence": 0-10}"""
 )

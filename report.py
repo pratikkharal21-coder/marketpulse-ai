@@ -81,6 +81,31 @@ TEMPLATE = """
   </div>
   {% endfor %}
   {% endif %}
+
+  {% if satire_items %}
+  <h3 style="margin-top: 24px; margin-bottom: 4px;">🗞️ The Joke Desk</h3>
+  <p style="font-size: 11px; color: #b91c1c; font-weight: bold; margin-top: 0; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em;">
+    Satire — not real news or market data
+  </p>
+  {% for item in satire_items %}
+  <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+    <div style="font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 0.05em;">
+      Satire via {{ item.source_label }} · {{ item.thread|length }} tweets
+    </div>
+    {% if item.cid %}
+    <img src="cid:{{ item.cid }}" alt="satire illustration" style="width: 100%; max-width: 560px; border-radius: 6px; margin: 10px 0;">
+    {% endif %}
+    {% for tweet in item.thread %}
+    <p style="font-size: 15px; line-height: 1.4; margin: 10px 0; padding-left: 10px; border-left: 3px solid #7c3aed;">
+      {{ tweet }}
+    </p>
+    {% endfor %}
+    <div style="font-size: 12px; margin-top: 6px;">
+      <a href="{{ item.story_link }}" style="color: #2563eb;">{{ item.story_title }}</a>
+    </div>
+  </div>
+  {% endfor %}
+  {% endif %}
 </body>
 </html>
 """
@@ -102,12 +127,14 @@ def _assign_cids(items, prefix):
     return inline_images
 
 
-def render(threads, story_count, deep_dives, meme_threads=None):
+def render(threads, story_count, deep_dives, meme_threads=None, satire_items=None):
     meme_threads = meme_threads or []
+    satire_items = satire_items or []
     inline_images = {}
     inline_images.update(_assign_cids(threads, "thread"))
     inline_images.update(_assign_cids(deep_dives, "deepdive"))
     inline_images.update(_assign_cids(meme_threads, "meme"))
+    inline_images.update(_assign_cids(satire_items, "satire"))
 
     html = _template.render(
         run_time=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
@@ -115,5 +142,6 @@ def render(threads, story_count, deep_dives, meme_threads=None):
         threads=threads,
         deep_dives=deep_dives,
         meme_threads=meme_threads,
+        satire_items=satire_items,
     )
     return html, inline_images

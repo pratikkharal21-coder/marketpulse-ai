@@ -81,16 +81,22 @@ decisions worth knowing about before reviewing the code:
 | `poster.py` | Optional: posts the run's top-ranked thread(s) to X as a real reply chain via `tweepy`, respecting a monthly post budget. A no-op unless X credentials are configured -- see "Auto-posting to X" below. |
 | `meme.py` | Optional (on by default): generates one extra sarcastic/mocking "meme take" thread per run, reacting to the day's top-ranked story. |
 | `memeart.py` | Renders the meme take's cartoon illustration -- original, hand-drawn-in-code icons (not scraped/copied meme templates), same free/keyless/self-hosted approach as `chart.py`. |
+| `satire.py` | Optional (on by default): builds a separate "lighter side" digest from `FEEDS["humor"]` (satire/comedy sources) -- bypasses `triage.py` entirely since a fictional headline has no real financial relevance to score. |
+| `illustration.py` | Shared Pollinations.ai fetch + PIL caption/stat/badge compositing used by both `satire_image.py` and `news_image.py` -- one implementation, two different disclosure badges. |
+| `satire_image.py` | Thin wrapper around `illustration.py` for satire items: burns in a red "SATIRE — NOT REAL NEWS" badge. |
+| `news_image.py` | Thin wrapper around `illustration.py` for the `editorial_illustration` visual type (see `chart.py`): burns in a neutral "AI ILLUSTRATION — NOT A REAL PHOTO" badge instead. |
 | `.github/workflows/marketpulse.yml` | The only thing GitHub's scheduler runs. `workflow_dispatch`-only (see above). |
 
 ## Data flow per run
 
-1. **`feeds.py`** fetches every RSS feed in `FEEDS` (6 categories: markets, macro, fx,
-   commodities, crypto, tech_ai — 30 feeds total), filtered to the last `LOOKBACK_HOURS`.
-2. **`state.py`** drops anything already sent in a previous run (hash = story URL).
-3. **`triage.py`** scores every remaining headline 0-10 on relevance/impact via Groq, in batches
-   of 12 (tuned to stay under the free-tier token-per-minute cap). Survivors above
-   `TRIAGE_RELEVANCE_THRESHOLD` are kept, sorted, capped at `MAX_STORIES_ANALYZED`.
+1. **`feeds.py`** fetches every RSS feed in `FEEDS` (7 categories: markets, macro, fx,
+   commodities, crypto, tech_ai, humor — 32 feeds total), filtered to the last `LOOKBACK_HOURS`.
+2. **`state.py`** drops anything already sent in a previous run (hash = story URL). The `humor`
+   category is then split off from everything else -- it skips step 3 entirely and goes straight
+   to `satire.py` (step 8a below) instead.
+3. **`triage.py`** scores every remaining (non-`humor`) headline 0-10 on relevance/impact via
+   Groq, in batches of 12 (tuned to stay under the free-tier token-per-minute cap). Survivors
+   above `TRIAGE_RELEVANCE_THRESHOLD` are kept, sorted, capped at `MAX_STORIES_ANALYZED`.
 4. **`generate.py`** takes the top `MAX_SHORT_THREADS` survivors and asks Groq (qwen/qwen3.8-27b)
    for one short thread each, plus an optional visual spec.
 5. **`longform.py`** takes the top `MAX_LONGFORM_STORIES` (overlaps with step 4 by design — the
@@ -101,9 +107,13 @@ decisions worth knowing about before reviewing the code:
    across both groups to X for real, as a genuine reply chain, before the email goes out.
 8. **`meme.py`** (optional, on by default) generates one extra mocking thread reacting to the
    run's top-ranked story, with a cartoon illustration from `memeart.py`.
+8a. **`satire.py`** (optional, on by default) takes the most recent `FEEDS["humor"]` items
+    (step 2) and generates up to `MAX_SATIRE_ITEMS` short joke takes, each with its own
+    illustration from `satire_image.py`.
 9. **`report.py`** renders the HTML email and collects inline images by Content-ID.
 10. **`mailer.py`** sends it via Gmail SMTP.
-11. **`state.py`** marks everything sent; the workflow commits `state.json` back to the repo.
+11. **`state.py`** marks everything sent (including published satire items); the workflow commits
+    `state.json` back to the repo.
 
 ## The six visual types (`chart.py`)
 
@@ -181,6 +191,89 @@ applies here too, so every illustration is drawn from scratch, free and keyless,
 chart. The model picks which mood fits the story's tone and writes a short caption; an
 unrecognized mood falls back to "confused" rather than posting with no image at all.
 
+## Real-news illustrations (`editorial_illustration`)
+
+One more entry in `chart.py`'s visual-type menu (see "The six visual types" above -- that table
+predates several rounds of additions and is no longer literally six), for serious threads/deep
+dives, not just the satire digest: `editorial_illustration` gives the model a cartoon-style
+illustrated-scene option for stories that are dramatic/qualitative (a policy shock, a
+geopolitical clash, a sentiment shift) rather than a clean numeric series -- a bold caption and
+an optional single stat callout over a generated scene, instead of forcing an awkward bar/pie/
+trend chart onto a story that doesn't actually have multi-value data. The model picks it the same
+way it picks every other visual type (data-shape fit, self-reported confidence), nothing forces
+it.
+
+**Grounding:** registered in `verify.py`'s `SPEC_DRIVEN_FIELDS`, so it gets the exact same
+anti-fabrication pipeline as bar_chart/pie_chart/etc. for free -- its one optional `stat_value`
+must trace back to a real number in the story's own text (verified in testing: an invented stat
+gets fully suppressed to `"none"` rather than published), and its `title` must share a grounded
+term with the story's subject.
+
+**Real people:** real news routinely centers a real named person (a Fed chair, a CEO, a head of
+state) -- completely normal for the thread text, but the image prompt is separately instructed to
+depict only a generic stand-in, and `news_image.py` hard-blocks (skips the image entirely) if a
+real name from the story's own headline leaks into the generated scene description anyway, same
+rule and same reasoning as the satire digest below.
+
+**Why the disclosure badge matters here specifically:** unlike the satire digest, these threads
+can get auto-posted to a real X account via `poster.py`. A photorealistic-looking AI scene of a
+real event needs a clear, conspicuous "this is illustrative, not a photo" label to stay on the
+right side of platform synthetic-media policies -- `news_image.py` burns in "AI ILLUSTRATION —
+NOT A REAL PHOTO" for exactly this reason, not just as a style choice.
+
+## Satire digest
+
+A separate "lighter side" section (on by default, `SATIRE_DIGEST_ENABLED=false` to turn off):
+up to `MAX_SATIRE_ITEMS` short joke takes per run, built from `FEEDS["humor"]` (currently The
+Onion and The Daily Mash's business feed) instead of the real market feeds. Additive, never a
+replacement -- and rendered in its own clearly-labeled email section, never mixed into the
+serious threads/deep dives.
+
+**Why it skips triage:** `triage.py`'s model scores real financial relevance/impact, which is
+meaningless against an already-fictional headline. `main.py` splits the `humor` category off
+`new_items` before triage ever runs, and `satire.py` picks straight from the most recent
+candidates instead.
+
+**Tone and grounding:** like `meme.py`, `satire.py` does NOT build its prompt from `persona.py`'s
+neutral voice. Unlike `meme.py`, it also skips `verify.check_causal_claims` -- that check exists
+to catch a claim not actually supported by a *real* source story, which doesn't apply when the
+source headline is already satire. The structural hard-blocks that aren't about real-world
+grounding (`check_thread_completeness`, `check_hashtag_discipline`) still apply.
+
+**A real safety gap, found in testing, not theoretical:** a live run picked up a genuine Onion
+headline, "Dennis Hastert Dies" -- a real, named public figure's real death -- and despite the
+system prompt explicitly forbidding it ("never a named real individual"), the model wrote a
+mocking joke about him by name. The prompt instruction alone was not trustworthy enough to rely
+on. `satire.py` now runs two hard, deterministic filters instead of trusting the model to
+self-police: `_is_sensitive_topic()` skips any headline matching death/tragedy keywords
+*before* a generation call is even made, and `_names_real_individual_from_headline()` blocks the
+generated thread afterward if a capitalized name from the headline shows up in the model's own
+output anyway. Both are deliberately conservative -- skipping a borderline-serious headline costs
+nothing (there's always another satire candidate to backfill with); letting one through costs a
+lot.
+
+**Visual:** `satire_image.py` (a thin wrapper around the shared `illustration.py`) fetches a
+free, keyless background illustration from Pollinations.ai (prompted for a generic, invented
+scene only -- explicitly never a real or recognizable person, even when the source headline
+names one), then draws the bold poster-style caption and an optional stat callout on top with
+PIL. This split exists because diffusion image models can't reliably spell words -- asking
+Pollinations itself to render the caption came back as garbled nonsense in testing, so every
+piece of readable text in the final image is drawn separately, the same self-rendered-text
+approach `chart.py`/`memeart.py` already use everywhere else. Every image also gets a burned-in
+"SATIRE — NOT REAL NEWS" badge, since it could be screenshotted and shared out of the context of
+this email. `illustration.py` also hard-blocks the image (skips it, text still ships) if a real
+name from the headline leaks into the generated scene description -- the same incident described
+above ("A real safety gap") showed the system prompt's instruction alone isn't trustworthy
+enough on its own, and that gap applied just as much to the separately-generated image scene as
+it did to the thread text.
+
+**A real, not just theoretical, free-tier gap:** Pollinations' anonymous/keyless tier has a real
+rate/budget limit that returned `402 Payment Required` multiple times during testing, even at
+low volume (2 requests, 20 seconds apart) -- looser than its documented "~1 request/15s" framing
+suggests. `generate_satire_image()` treats this as a soft failure: the item still ships with its
+joke text, just without an image, same contract as every other optional visual in this pipeline
+(a missing `chart_image` is not an error).
+
 ## Known rough edges (good places to look for improvement)
 
 - **Groq free-tier rate limits cause visible retry noise.** `triage.py`'s batch size (12) and
@@ -247,4 +340,6 @@ driven externally, POSTing to the GitHub Actions dispatch endpoint at the exact 
 
 $0/month: Groq free tier (~1 triage call + ~7 generation calls per run × 3 runs/day, well inside
 free-tier limits), GitHub Actions free tier (a few minutes of `ubuntu-latest` per run, free tier
-covers 2,000 min/month for private repos), Gmail SMTP (free), cron-job.org (free tier).
+covers 2,000 min/month for private repos), Gmail SMTP (free), cron-job.org (free tier),
+Pollinations.ai image generation (free, keyless -- no account needed, see its real-world rate
+limit caveat under "Satire digest" above).

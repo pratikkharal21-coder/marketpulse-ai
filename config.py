@@ -73,6 +73,18 @@ ENGAGEMENT_SCORING_ENABLED = _flag("ENGAGEMENT_SCORING_ENABLED", True)
 # the normal threads/deep dives, never a replacement -- costs one extra, cheap Groq call per run.
 MEME_MODE_ENABLED = _flag("MEME_MODE_ENABLED", True)
 
+# Separate "lighter side" digest built from FEEDS["humor"] (satire/comedy sources, e.g. The
+# Onion) -- bypasses triage.py entirely (scoring fiction for real market relevance makes no
+# sense) and gets its own illustrated image per item via satire_image.py (free Pollinations.ai
+# background art + a PIL-drawn bold caption/stat overlay, since image models can't reliably
+# render legible text themselves). Additive to every other section, never a replacement.
+SATIRE_DIGEST_ENABLED = _flag("SATIRE_DIGEST_ENABLED", True)
+# How many satire items to generate per run. Kept small -- each one costs a Groq call plus a
+# Pollinations.ai image fetch, and Pollinations' free/keyless tier has a real (if fuzzy) rate
+# budget that returns 402 once exhausted (confirmed in testing) -- generate_satire_image()
+# already treats that as a soft failure (item ships without an image) rather than blocking.
+MAX_SATIRE_ITEMS = int(os.environ.get("MAX_SATIRE_ITEMS", "2"))
+
 # Optional: auto-post the top-ranked thread(s) to X instead of only emailing drafts. Needs an
 # X Developer account's OAuth 1.0a credentials (developer.x.com -> your app -> "Keys and
 # tokens"). Auto-enables once all four are present; X_AUTO_POST_ENABLED=false forces it off

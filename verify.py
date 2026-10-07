@@ -18,7 +18,7 @@ SPEC_DRIVEN_FIELDS = (
     "slope_chart", "bullet_chart", "pie_chart", "donut_chart", "treemap_chart", "histogram",
     "box_plot", "violin_plot", "scatter_chart", "bubble_chart", "correlation_matrix_chart",
     "regression_chart", "trend_chart", "term_structure_chart", "spread_chart", "zscore_chart",
-    "cumulative_flow_chart", "custom_stat_visual",
+    "cumulative_flow_chart", "custom_stat_visual", "editorial_illustration",
 )
 
 # Retired from the persona.py menu (2026-07-15, trend_chart added 2026-07-17): real production

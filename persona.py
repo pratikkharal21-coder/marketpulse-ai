@@ -111,7 +111,7 @@ VISUAL_TYPES = (
     "stacked_bar_chart", "waterfall_chart", "slope_chart", "bullet_chart", "pie_chart",
     "donut_chart", "treemap_chart", "histogram", "box_plot", "violin_plot",
     "term_structure_chart", "spread_chart", "zscore_chart", "cumulative_flow_chart",
-    "flowchart", "real_world_image", "custom_stat_visual",
+    "flowchart", "real_world_image", "editorial_illustration", "custom_stat_visual",
 )
 _TOTAL_OTHER_VISUAL_TYPES = len(VISUAL_TYPES) - 1  # minus custom_stat_visual itself
 _VISUAL_TYPE_ENUM_TEXT = ", ".join(f'"{t}"' for t in VISUAL_TYPES[:-1]) + f', "{VISUAL_TYPES[-1]}", or "none"'
@@ -285,6 +285,21 @@ VISUAL_GUIDELINES = (
     "Reserve\", \"Crude oil\") — must name the actual subject, never invented or approximate. Pulls "
     "a real photo from Wikipedia; skip (\"none\") if no single clear, photographable entity is the "
     "subject — most macro/data-release stories should not use this.\n"
+    "editorial_illustration — the story's core appeal is a dramatic, qualitative moment (a policy "
+    "shock, a geopolitical clash, a sharp shift in market mood) better served by an evocative "
+    "illustrated scene with a bold headline-style caption than by a precise numeric chart — use "
+    "this INSTEAD of forcing a bar_chart/pie_chart/etc. onto a story that doesn't actually have "
+    "the multi-value data those need. {\"title\": short punchy bold caption for the image (under "
+    "60 characters, a hook not a restatement of the headline), \"stat_value\": ONE real number "
+    "from the story or null, \"stat_unit\": e.g. \"%\"/\"$B\"/\"\" or null (only if stat_value is "
+    "set), \"scene\": one short plain-English description (under 150 characters) of the "
+    "illustrated scene}. Same anti-fabrication rule as every other type — stat_value must be a "
+    "real number stated in the story, never invented; set it null rather than guess. GENERIC "
+    "invented characters/scenery only in \"scene\" — flags, landmarks, and generic role "
+    "stand-ins (a generic central banker, a generic trader, a generic suited politician) are "
+    "fine, but NEVER the real name or likeness of an actual named person, even when the story "
+    "itself names one (describe a generic stand-in role instead) — this is a hard rule, not a "
+    "style preference.\n"
     "custom_stat_visual — the story has clean, specific, verifiable numbers (stated in its text, "
     "exactly like every other spec-driven type) that would genuinely help a reader, but don't fit "
     f"the shape of any of the other {_TOTAL_OTHER_VISUAL_TYPES} types (a surprising gap between two numbers, a notable "
